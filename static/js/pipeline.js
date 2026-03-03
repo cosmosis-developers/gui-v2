@@ -1,11 +1,11 @@
 /**
  * pipeline.js — SVG-based pipeline canvas
  *
- * Renders a horizontal linear sequence of module boxes.  When a module is
- * clicked its input ports (green) appear to its left and its output ports
- * (amber) appear to its right, connected by dashed lines.  Bezier arcs are
- * drawn from any earlier module that produces a matching output to the
- * corresponding input port of the selected module.
+ * Renders a vertical linear sequence of module boxes (pipeline flows top→down).
+ * When a module is clicked its input ports (green) appear to its left and its
+ * output ports (amber) appear to its right.  Bezier arcs curve to the left
+ * from any earlier module that produces a matching output to the corresponding
+ * input port of the selected module.
  *
  * Modules can be dragged from the left sidebar and dropped onto the canvas;
  * a blue dashed indicator line shows the insertion position.
@@ -15,14 +15,13 @@ class PipelineCanvas {
   static SAMPLER_INDEX = 0; // The sampler is always at index 0 and cannot be removed.
   static MW  = 145;  // module width
   static MH  = 58;   // module height
-  static MS  = 230;  // horizontal spacing between modules (gap)
-  static CH  = 340;  // canvas height
-  static PAD = 60;   // left/right padding
+  static MS  = 90;   // vertical spacing between modules
+  static PAD = 60;   // top/bottom/side padding
 
   static PW  = 115;  // port box width
   static PH  = 22;   // port box height
   static PG  = 4;    // vertical gap between port boxes
-  static PO  = 14;   // horizontal gap between port box and module edge
+  static PO  = 20;   // horizontal gap between port box and module edge
 
   constructor(containerId) {
     this.container  = document.getElementById(containerId);
@@ -85,20 +84,27 @@ class PipelineCanvas {
 
   // ── private – coordinate helpers ─────────────────────────────
 
-  _modX(i) {
-    return PipelineCanvas.PAD + i * (PipelineCanvas.MW + PipelineCanvas.MS);
+  /** Fixed X position for the left edge of every module box. */
+  _modX() {
+    return PipelineCanvas.PAD + PipelineCanvas.PW + PipelineCanvas.PO;
   }
 
-  _modY() {
-    return (PipelineCanvas.CH - PipelineCanvas.MH) / 2;
+  /** Y position for the top edge of module at pipeline index i. */
+  _modY(i) {
+    return PipelineCanvas.PAD + i * (PipelineCanvas.MH + PipelineCanvas.MS);
   }
 
   _svgWidth() {
+    const { PAD, PW, PO, MW } = PipelineCanvas;
+    const natural = PAD + PW + PO + MW + PO + PW + PAD;
+    return Math.max(natural, this.container.clientWidth || 600);
+  }
+
+  _svgHeight() {
+    const { PAD, MH, MS } = PipelineCanvas;
     const n = this.modules.length || 1;
-    const natural = PipelineCanvas.PAD * 2
-                  + n * PipelineCanvas.MW
-                  + (n - 1) * PipelineCanvas.MS;
-    return Math.max(natural, this.container.clientWidth || 800);
+    const natural = PAD * 2 + n * MH + (n - 1) * MS;
+    return Math.max(natural, this.container.clientHeight || 400);
   }
 
   // ── private – full render ────────────────────────────────────
@@ -110,7 +116,7 @@ class PipelineCanvas {
     }
 
     const w = this._svgWidth();
-    const h = PipelineCanvas.CH;
+    const h = this._svgHeight();
     this.svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
     this.svg.setAttribute("width",  w);
     this.svg.setAttribute("height", h);
@@ -148,17 +154,18 @@ class PipelineCanvas {
     this.svg.appendChild(r);
   }
 
-  /** Horizontal arrows between consecutive modules. */
+  /** Vertical arrows between consecutive modules. */
   _appendConnections() {
-    const cy = this._modY() + PipelineCanvas.MH / 2;
+    const { MW, MH } = PipelineCanvas;
+    const cx = this._modX() + MW / 2;
     for (let i = 0; i < this.modules.length - 1; i++) {
-      const x1 = this._modX(i) + PipelineCanvas.MW;
-      const x2 = this._modX(i + 1) - 6;
+      const y1 = this._modY(i) + MH;
+      const y2 = this._modY(i + 1) - 6;
       const el = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      el.setAttribute("x1", x1);
-      el.setAttribute("y1", cy);
-      el.setAttribute("x2", x2);
-      el.setAttribute("y2", cy);
+      el.setAttribute("x1", cx);
+      el.setAttribute("y1", y1);
+      el.setAttribute("x2", cx);
+      el.setAttribute("y2", y2);
       el.setAttribute("stroke",       "#94a3b8");
       el.setAttribute("stroke-width", "2");
       el.setAttribute("marker-end",   "url(#arr-grey)");
@@ -168,8 +175,8 @@ class PipelineCanvas {
 
   /** A single module box with label (and optional remove button). */
   _appendModule(module, index) {
-    const x   = this._modX(index);
-    const y   = this._modY();
+    const x   = this._modX();
+    const y   = this._modY(index);
     const id  = module.instanceId;
     const sel = id === this.selectedId;
     const perm = !!module.permanent;
@@ -226,9 +233,9 @@ class PipelineCanvas {
 
   /** Input/output port boxes for the selected module. */
   _appendPorts(module, index) {
-    const mx = this._modX(index);
-    const my = this._modY();
-    const { PW, PH, PG, PO } = PipelineCanvas;
+    const mx = this._modX();
+    const my = this._modY(index);
+    const { MW, MH, PW, PH, PG, PO } = PipelineCanvas;
 
     const inputs  = module.inputs  || [];
     const outputs = module.outputs || [];
@@ -236,16 +243,16 @@ class PipelineCanvas {
     // ── input ports (left of module) ──
     if (inputs.length > 0) {
       const totalH = inputs.length * (PH + PG) - PG;
-      const startY = my + (PipelineCanvas.MH - totalH) / 2;
+      const startY = my + (MH - totalH) / 2;
       const portX  = mx - PO - PW;
 
       inputs.forEach((port, i) => {
         const portY = startY + i * (PH + PG);
         const cy    = portY + PH / 2;
 
-        // dashed connector: port right edge → module left edge
-        const line = this._makeLine(portX + PW, cy, mx, cy, "port-connector");
-        this.svg.appendChild(line);
+        // bezier connector: port right edge → module left edge (arcs left)
+        const path = this._makeBezierConnector(portX + PW, cy, mx, cy, "left");
+        this.svg.appendChild(path);
 
         const rect = this._makePortRect(portX, portY, "input-port");
         this.svg.appendChild(rect);
@@ -258,16 +265,16 @@ class PipelineCanvas {
     // ── output ports (right of module) ──
     if (outputs.length > 0) {
       const totalH = outputs.length * (PH + PG) - PG;
-      const startY = my + (PipelineCanvas.MH - totalH) / 2;
-      const portX  = mx + PipelineCanvas.MW + PO;
+      const startY = my + (MH - totalH) / 2;
+      const portX  = mx + MW + PO;
 
       outputs.forEach((port, i) => {
         const portY = startY + i * (PH + PG);
         const cy    = portY + PH / 2;
 
-        // dashed connector: module right edge → port left edge
-        const line = this._makeLine(mx + PipelineCanvas.MW, cy, portX, cy, "port-connector");
-        this.svg.appendChild(line);
+        // bezier connector: module right edge → port left edge (arcs right)
+        const path = this._makeBezierConnector(mx + MW, cy, portX, cy, "right");
+        this.svg.appendChild(path);
 
         const rect = this._makePortRect(portX, portY, "output-port");
         this.svg.appendChild(rect);
@@ -280,19 +287,19 @@ class PipelineCanvas {
 
   /**
    * Blue bezier arcs from source modules → input ports of the selected module.
-   * Each arc curves above the pipeline baseline.
+   * Each arc curves to the LEFT of the pipeline column.
    */
   _appendPortEdges(selIdx) {
     const module  = this.modules[selIdx];
     const inputs  = module.inputs || [];
     if (inputs.length === 0) return;
 
-    const mx = this._modX(selIdx);
-    const my = this._modY();
-    const { PW, PH, PG, PO } = PipelineCanvas;
+    const { MW, MH, PW, PH, PG, PO } = PipelineCanvas;
+    const mx = this._modX();
+    const my = this._modY(selIdx);
 
     const totalH = inputs.length * (PH + PG) - PG;
-    const startY = my + (PipelineCanvas.MH - totalH) / 2;
+    const startY = my + (MH - totalH) / 2;
     const portX  = mx - PO - PW; // left edge of input port boxes
 
     inputs.forEach((input, i) => {
@@ -304,17 +311,17 @@ class PipelineCanvas {
         const has = (src.outputs || []).some((o) => o.name === input.name);
         if (!has) continue;
 
-        const srcX  = this._modX(j) + PipelineCanvas.MW; // right edge of source
-        const srcY  = this._modY() + PipelineCanvas.MH / 2;
-        const tgtX  = portX;
-        const tgtY  = portCY;
-        const arcY  = my - 50; // arc apex above pipeline
-        const cpOff = Math.abs(tgtX - srcX) * 0.35;
+        const srcX = mx + MW / 2;              // horizontal center of source module
+        const srcY = this._modY(j) + MH;       // bottom edge of source module
+        const tgtX = portX + PW;               // right edge of left-side input port box
+        const tgtY = portCY;
 
+        // Arc bulges to the LEFT of the port column
+        const arcX  = portX - 50;
         const d = [
           `M ${srcX} ${srcY}`,
-          `C ${srcX + cpOff} ${arcY},`,
-          `  ${tgtX - cpOff} ${arcY},`,
+          `C ${arcX} ${srcY},`,
+          `  ${arcX} ${tgtY},`,
           `  ${tgtX} ${tgtY}`,
         ].join(" ");
 
@@ -332,39 +339,51 @@ class PipelineCanvas {
     });
   }
 
-  /** Blue dashed vertical line showing the drop-insertion point. */
+  /** Blue dashed horizontal line showing the drop-insertion point. */
   _appendDropIndicator(index) {
     // Clamp: never before sampler
     const clamped = Math.max(PipelineCanvas.SAMPLER_INDEX + 1, Math.min(index, this.modules.length));
-    let x;
+    let y;
     if (clamped < this.modules.length) {
-      x = this._modX(clamped) - PipelineCanvas.MS / 2;
+      y = this._modY(clamped) - PipelineCanvas.MS / 2;
     } else {
-      x = this._modX(this.modules.length - 1) + PipelineCanvas.MW + PipelineCanvas.MS / 2;
+      y = this._modY(this.modules.length - 1) + PipelineCanvas.MH + PipelineCanvas.MS / 2;
     }
 
-    const y1 = this._modY() - 22;
-    const y2 = this._modY() + PipelineCanvas.MH + 22;
+    const mx = this._modX();
+    const x1 = mx - 22;
+    const x2 = mx + PipelineCanvas.MW + 22;
 
     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1",             x);
-    line.setAttribute("y1",             y1);
-    line.setAttribute("x2",             x);
-    line.setAttribute("y2",             y2);
-    line.setAttribute("class",          "insertion-indicator");
-    line.setAttribute("stroke",         "#3b82f6");
-    line.setAttribute("stroke-width",   "2.5");
+    line.setAttribute("x1",              x1);
+    line.setAttribute("y1",              y);
+    line.setAttribute("x2",              x2);
+    line.setAttribute("y2",              y);
+    line.setAttribute("class",           "insertion-indicator");
+    line.setAttribute("stroke",          "#3b82f6");
+    line.setAttribute("stroke-width",    "2.5");
     line.setAttribute("stroke-dasharray","6 3");
     this.svg.appendChild(line);
   }
 
   // ── private – SVG element factories ──────────────────────────
 
-  _makeLine(x1, y1, x2, y2, cls) {
-    const el = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    el.setAttribute("x1", x1); el.setAttribute("y1", y1);
-    el.setAttribute("x2", x2); el.setAttribute("y2", y2);
-    el.setAttribute("class", cls);
+  /**
+   * Bezier connector between a port box edge and the module edge.
+   * side = "left"  → arc bulges left  (input ports)
+   * side = "right" → arc bulges right (output ports)
+   */
+  _makeBezierConnector(x1, y1, x2, y2, side) {
+    const span  = Math.abs(x2 - x1);
+    const bulge = span * 0.5;
+    const sign  = side === "right" ? 1 : -1;
+    const cp1x  = x1 + sign * bulge;
+    const cp2x  = x2 + sign * bulge;
+    const d = `M ${x1} ${y1} C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}`;
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    el.setAttribute("d",     d);
+    el.setAttribute("fill",  "none");
+    el.setAttribute("class", "port-connector");
     return el;
   }
 
@@ -421,23 +440,24 @@ class PipelineCanvas {
 
   // ── private – drag & drop ────────────────────────────────────
 
-  /** Convert a screen clientX to an SVG x coordinate. */
-  _toSvgX(clientX) {
+  /** Convert a screen clientY to an SVG y coordinate. */
+  _toSvgY(clientY) {
     const rect  = this.svg.getBoundingClientRect();
-    const scale = this.svg.viewBox.baseVal.width > 0
-      ? this.svg.viewBox.baseVal.width / rect.width
+    const scale = this.svg.viewBox.baseVal.height > 0
+      ? this.svg.viewBox.baseVal.height / rect.height
       : 1;
-    return (clientX - rect.left) * scale;
+    return (clientY - rect.top) * scale;
   }
 
   /**
-   * Return the insertion index based on mouse x.
+   * Return the insertion index based on mouse y.
    * Result is clamped to [1, modules.length] (never before sampler).
    */
-  _insertionIndexFor(clientX) {
-    const svgX = this._toSvgX(clientX);
+  _insertionIndexFor(clientY) {
+    const svgY = this._toSvgY(clientY);
+    const { MH } = PipelineCanvas;
     for (let i = 0; i < this.modules.length; i++) {
-      if (svgX < this._modX(i) + PipelineCanvas.MW / 2) {
+      if (svgY < this._modY(i) + MH / 2) {
         return Math.max(PipelineCanvas.SAMPLER_INDEX + 1, i);
       }
     }
@@ -447,7 +467,7 @@ class PipelineCanvas {
   _onDragOver(e) {
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
-    const idx = this._insertionIndexFor(e.clientX);
+    const idx = this._insertionIndexFor(e.clientY);
     if (idx !== this.dropIndex) {
       this.dropIndex = idx;
       this._render();
@@ -470,11 +490,18 @@ class PipelineCanvas {
 
     try {
       const data = JSON.parse(raw);
-      const idx  = this._insertionIndexFor(e.clientX);
+      const idx  = this._insertionIndexFor(e.clientY);
       this.modules.splice(idx, 0, {
         ...data,
         instanceId: `${data.id}_${Date.now()}`,
       });
+      // Deselect when a new module is added so stale port boxes disappear
+      if (this.selectedId !== null) {
+        this.selectedId = null;
+        document.dispatchEvent(
+          new CustomEvent("pipeline:moduleSelected", { detail: null })
+        );
+      }
     } catch (err) {
       console.error("Pipeline drop error:", err);
     }
