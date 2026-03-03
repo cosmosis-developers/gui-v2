@@ -124,7 +124,50 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
   padding: 8px;
   display: flex;
   flex-direction: column;
+  gap: 4px;
+}
+
+/* ── Category groups in module library ─────────────────────── */
+.category-group { display: flex; flex-direction: column; }
+
+.category-toggle {
+  display: flex;
+  align-items: center;
   gap: 5px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 5px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-light);
+  cursor: pointer;
+  text-align: left;
+  user-select: none;
+  border-radius: 5px;
+  transition: background 0.1s;
+}
+.category-toggle:hover { background: var(--border); color: var(--text); }
+
+.category-chevron {
+  display: inline-block;
+  width: 12px;
+  font-style: normal;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+/* Chevron: collapsed = ▶ (pointing right), expanded = ▼ (pointing down) */
+.category-chevron::before { content: "▶"; font-size: 9px; }
+.category-toggle.expanded .category-chevron { transform: rotate(90deg); }
+
+.category-modules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 8px;
+  margin-top: 2px;
 }
 
 .module-card {

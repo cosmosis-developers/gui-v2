@@ -4,6 +4,7 @@ AVAILABLE_MODULES = [
     {
         "id": "consistency",
         "name": "Consistency",
+        "category": "Cosmology",
         "description": "Derive consistent cosmological parameters (e.g. omega_m from omega_b + omega_cdm)",
         "inputs": [
             {"name": "cosmological_parameters/omega_b", "type": "float", "description": "Baryon density"},
@@ -15,8 +16,25 @@ AVAILABLE_MODULES = [
         ],
     },
     {
+        "id": "distances",
+        "name": "Distances",
+        "category": "Cosmology",
+        "description": "Compute cosmological distance measures",
+        "inputs": [
+            {"name": "cosmological_parameters/omega_m", "type": "float", "description": "Matter density"},
+            {"name": "cosmological_parameters/omega_lambda", "type": "float", "description": "Dark energy density"},
+            {"name": "cosmological_parameters/h0", "type": "float", "description": "Hubble parameter"},
+        ],
+        "outputs": [
+            {"name": "distances/d_a", "type": "array", "description": "Angular diameter distances"},
+            {"name": "distances/d_l", "type": "array", "description": "Luminosity distances"},
+            {"name": "distances/d_c", "type": "array", "description": "Comoving distances"},
+        ],
+    },
+    {
         "id": "boltzmann_camb",
         "name": "CAMB",
+        "category": "Boltzmann Codes",
         "description": "Boltzmann code to compute CMB and matter power spectra",
         "inputs": [
             {"name": "cosmological_parameters/omega_b", "type": "float", "description": "Baryon density"},
@@ -36,6 +54,7 @@ AVAILABLE_MODULES = [
     {
         "id": "halofit",
         "name": "Halofit",
+        "category": "Power Spectra",
         "description": "Non-linear matter power spectrum using the Halofit fitting formula",
         "inputs": [
             {"name": "matter_power_lin/p_k", "type": "array", "description": "Linear matter power spectrum"},
@@ -48,6 +67,7 @@ AVAILABLE_MODULES = [
     {
         "id": "shear_cl",
         "name": "Shear Cl",
+        "category": "Weak Lensing",
         "description": "Compute weak lensing shear angular power spectra",
         "inputs": [
             {"name": "matter_power_nl/p_k", "type": "array", "description": "Non-linear matter power spectrum"},
@@ -63,6 +83,7 @@ AVAILABLE_MODULES = [
     {
         "id": "planck_likelihood",
         "name": "Planck",
+        "category": "Likelihoods",
         "description": "Planck 2018 CMB temperature and polarisation likelihood",
         "inputs": [
             {"name": "cmb_cl/tt", "type": "array", "description": "CMB TT power spectrum"},
@@ -76,6 +97,7 @@ AVAILABLE_MODULES = [
     {
         "id": "des_shear",
         "name": "DES Shear",
+        "category": "Likelihoods",
         "description": "DES Year 3 weak gravitational lensing likelihood",
         "inputs": [
             {"name": "shear_cl/bin_1_1", "type": "array", "description": "Shear C_ℓ bin 1×1"},
@@ -84,21 +106,6 @@ AVAILABLE_MODULES = [
         ],
         "outputs": [
             {"name": "likelihoods/des_shear_like", "type": "float", "description": "DES shear log-likelihood"},
-        ],
-    },
-    {
-        "id": "distances",
-        "name": "Distances",
-        "description": "Compute cosmological distance measures",
-        "inputs": [
-            {"name": "cosmological_parameters/omega_m", "type": "float", "description": "Matter density"},
-            {"name": "cosmological_parameters/omega_lambda", "type": "float", "description": "Dark energy density"},
-            {"name": "cosmological_parameters/h0", "type": "float", "description": "Hubble parameter"},
-        ],
-        "outputs": [
-            {"name": "distances/d_a", "type": "array", "description": "Angular diameter distances"},
-            {"name": "distances/d_l", "type": "array", "description": "Luminosity distances"},
-            {"name": "distances/d_c", "type": "array", "description": "Comoving distances"},
         ],
     },
 ]
@@ -113,6 +120,7 @@ SAMPLER_MODULE = {
     "outputs": [
         {"name": "cosmological_parameters/omega_b", "type": "float", "description": "Baryon density"},
         {"name": "cosmological_parameters/omega_cdm", "type": "float", "description": "Cold dark matter density"},
+        {"name": "cosmological_parameters/omega_m", "type": "float", "description": "Total matter density parameter Ωₘ"},
         {"name": "cosmological_parameters/h0", "type": "float", "description": "Hubble parameter"},
         {"name": "cosmological_parameters/n_s", "type": "float", "description": "Scalar spectral index"},
         {"name": "cosmological_parameters/A_s", "type": "float", "description": "Scalar amplitude"},

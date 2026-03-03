@@ -51,27 +51,55 @@ document.addEventListener("DOMContentLoaded", () => {
     const list = document.getElementById("module-list");
     list.innerHTML = "";
 
+    // Group modules by category
+    const groups = {};
     modules.forEach((mod) => {
-      const card = document.createElement("div");
-      card.className   = "module-card";
-      card.draggable   = true;
-      card.innerHTML   = `
-        <div class="module-card-name">${escHtml(mod.name)}</div>
-        <div class="module-card-desc">${escHtml(mod.description)}</div>
-      `;
+      const cat = mod.category || "Other";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(mod);
+    });
 
-      // Drag from sidebar → canvas
-      card.addEventListener("dragstart", (e) => {
-        e.dataTransfer.setData("application/json", JSON.stringify(mod));
-        e.dataTransfer.effectAllowed = "copy";
-        card.classList.add("dragging");
+    Object.entries(groups).forEach(([catName, mods]) => {
+      const section = document.createElement("div");
+      section.className = "category-group";
+
+      const header = document.createElement("button");
+      header.className = "category-toggle expanded";
+      header.innerHTML = `<span class="category-chevron"></span>${escHtml(catName)}`;
+      header.addEventListener("click", () => {
+        const isOpen = header.classList.toggle("expanded");
+        body.style.display = isOpen ? "" : "none";
       });
-      card.addEventListener("dragend", () => card.classList.remove("dragging"));
 
-      // Click → show details in right sidebar
-      card.addEventListener("click", () => showDetails(mod));
+      const body = document.createElement("div");
+      body.className = "category-modules";
 
-      list.appendChild(card);
+      mods.forEach((mod) => {
+        const card = document.createElement("div");
+        card.className   = "module-card";
+        card.draggable   = true;
+        card.innerHTML   = `
+          <div class="module-card-name">${escHtml(mod.name)}</div>
+          <div class="module-card-desc">${escHtml(mod.description)}</div>
+        `;
+
+        // Drag from sidebar → canvas
+        card.addEventListener("dragstart", (e) => {
+          e.dataTransfer.setData("application/json", JSON.stringify(mod));
+          e.dataTransfer.effectAllowed = "copy";
+          card.classList.add("dragging");
+        });
+        card.addEventListener("dragend", () => card.classList.remove("dragging"));
+
+        // Click → show details in right sidebar
+        card.addEventListener("click", () => showDetails(mod));
+
+        body.appendChild(card);
+      });
+
+      section.appendChild(header);
+      section.appendChild(body);
+      list.appendChild(section);
     });
   }
 

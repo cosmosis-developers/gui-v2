@@ -7,8 +7,9 @@
  * from any earlier module that produces a matching output to the corresponding
  * input port of the selected module.
  *
- * Modules can be dragged from the left sidebar and dropped onto the canvas;
- * a blue dashed indicator line shows the insertion position.
+ * Modules can be dragged from the left sidebar (new module) or reordered by
+ * dragging an existing canvas module to a new position.  A blue dashed
+ * indicator line shows the insertion position during any drag.
  */
 class PipelineCanvas {
   // ── layout constants ──────────────────────────────────────────
@@ -28,6 +29,9 @@ class PipelineCanvas {
     this.modules    = [];   // pipeline module objects
     this.selectedId = null; // instanceId of the selected module
     this.dropIndex  = -1;   // drop-indicator insertion index (-1 = hidden)
+
+    // Canvas drag-to-reorder state
+    this._canvasDrag = null; // { id, fromIdx, startY, moved }
 
     this._initSVG();
   }
@@ -76,10 +80,14 @@ class PipelineCanvas {
       }
     });
 
-    // Drag-and-drop from sidebar
+    // Sidebar drag-and-drop (new module onto canvas)
     this.svg.addEventListener("dragover",  (e) => this._onDragOver(e));
     this.svg.addEventListener("dragleave", (e) => this._onDragLeave(e));
     this.svg.addEventListener("drop",      (e) => this._onDrop(e));
+
+    // Canvas drag-to-reorder (mouse-based, works on SVG elements)
+    document.addEventListener("mousemove", (e) => this._onCanvasMouseMove(e));
+    document.addEventListener("mouseup",   (e) => this._onCanvasMouseUp(e));
   }
 
   // ── private – coordinate helpers ─────────────────────────────
@@ -180,10 +188,14 @@ class PipelineCanvas {
     const id  = module.instanceId;
     const sel = id === this.selectedId;
     const perm = !!module.permanent;
+    const isDragging = this._canvasDrag
+                       && this._canvasDrag.id === id
+                       && this._canvasDrag.moved;
 
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
     g.setAttribute("class", "module-group");
     g.setAttribute("data-id", id);
+    if (isDragging) g.setAttribute("opacity", "0.4");
 
     // Box
     const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -223,9 +235,13 @@ class PipelineCanvas {
       g.appendChild(rm);
     }
 
+    g.addEventListener("mousedown", (e) => this._onModuleMouseDown(e, id, index, perm));
     g.addEventListener("click", (e) => {
       e.stopPropagation();
-      this._select(id);
+      // Only select on click if we weren't dragging
+      if (!this._canvasDrag || !this._canvasDrag.moved) {
+        this._select(id);
+      }
     });
 
     this.svg.appendChild(g);
@@ -287,7 +303,8 @@ class PipelineCanvas {
 
   /**
    * Blue bezier arcs from source modules → input ports of the selected module.
-   * Each arc curves to the LEFT of the pipeline column.
+   * Each input is independently traced to its nearest (most recent) precursor
+   * that produces the matching output name.  Arcs curve to the LEFT.
    */
   _appendPortEdges(selIdx) {
     const module  = this.modules[selIdx];
@@ -305,7 +322,9 @@ class PipelineCanvas {
     inputs.forEach((input, i) => {
       const portCY = startY + i * (PH + PG) + PH / 2;
 
-      // Find the nearest earlier module that produces this output
+      // Search backward: find the nearest earlier module that produces this output.
+      // Each input is traced independently so different inputs can come from
+      // different (possibly non-adjacent) precursor modules.
       for (let j = selIdx - 1; j >= 0; j--) {
         const src = this.modules[j];
         const has = (src.outputs || []).some((o) => o.name === input.name);
@@ -438,7 +457,71 @@ class PipelineCanvas {
     this._render();
   }
 
-  // ── private – drag & drop ────────────────────────────────────
+  // ── private – canvas drag-to-reorder ─────────────────────────
+
+  _onModuleMouseDown(e, id, index, perm) {
+    // Only initiate canvas drag for non-permanent modules with left button
+    if (e.button !== 0 || perm) return;
+    // Don't interfere with the remove-button click
+    if (e.target.classList.contains("module-remove")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this._canvasDrag = { id, fromIdx: index, startY: e.clientY, moved: false };
+  }
+
+  _onCanvasMouseMove(e) {
+    if (!this._canvasDrag) return;
+    const dy = Math.abs(e.clientY - this._canvasDrag.startY);
+    if (dy > 5) this._canvasDrag.moved = true;
+    if (!this._canvasDrag.moved) return;
+
+    // Compute candidate insertion index (clamped, never before sampler)
+    const raw = this._insertionIndexFor(e.clientY);
+    const fromIdx = this._canvasDrag.fromIdx;
+    // An insertion at fromIdx or fromIdx+1 means "same position" — still
+    // update the visual indicator so it renders at the nearest gap
+    if (raw !== this.dropIndex) {
+      this.dropIndex = raw;
+      this._render();
+    }
+  }
+
+  _onCanvasMouseUp(e) {
+    if (!this._canvasDrag) return;
+    const ds = this._canvasDrag;
+    this._canvasDrag = null;
+    this.dropIndex = -1;
+
+    if (!ds.moved) {
+      // Short press = select the module (click behaviour)
+      this._select(ds.id);
+      return;
+    }
+
+    // Perform the reorder
+    const fromIdx  = ds.fromIdx;
+    const insertAt = this._insertionIndexFor(e.clientY); // insertion point before removal
+
+    // Clamp: never move before sampler
+    const clampedInsert = Math.max(PipelineCanvas.SAMPLER_INDEX + 1, insertAt);
+
+    // Adjust for the hole left by removing the module at fromIdx
+    const newIdx = clampedInsert > fromIdx ? clampedInsert - 1 : clampedInsert;
+
+    if (newIdx !== fromIdx) {
+      const [mod] = this.modules.splice(fromIdx, 1);
+      this.modules.splice(newIdx, 0, mod);
+      // Deselect so stale port arcs don't show stale positions
+      this.selectedId = null;
+      document.dispatchEvent(
+        new CustomEvent("pipeline:moduleSelected", { detail: null })
+      );
+    }
+
+    this._render();
+  }
+
+  // ── private – sidebar drag & drop ────────────────────────────
 
   /** Convert a screen clientY to an SVG y coordinate. */
   _toSvgY(clientY) {
@@ -465,6 +548,8 @@ class PipelineCanvas {
   }
 
   _onDragOver(e) {
+    // Ignore sidebar dragover events while a canvas drag is in progress
+    if (this._canvasDrag) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     const idx = this._insertionIndexFor(e.clientY);
