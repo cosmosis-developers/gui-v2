@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CosmoSIS GUI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+  <header>
+    <span class="app-title">CosmoSIS</span>
+    <nav class="tab-bar" role="tablist">
+      <button class="tab-btn active" data-tab="pipeline" role="tab" aria-selected="true">Pipeline</button>
+      <button class="tab-btn" data-tab="results"  role="tab" aria-selected="false">Results</button>
+      <button class="tab-btn" data-tab="sampling" role="tab" aria-selected="false">Sampling</button>
+      <button class="tab-btn" data-tab="campaign" role="tab" aria-selected="false">Campaign</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ── Pipeline tab ─────────────────────────────────────────── -->
+    <div id="tab-pipeline" class="tab-content active" role="tabpanel">
+      <div class="pipeline-layout">
+
+        <!-- Left sidebar: draggable module library -->
+        <aside class="left-sidebar">
+          <div class="sidebar-header">Module Library</div>
+          <div id="module-list" class="module-list"></div>
+        </aside>
+
+        <!-- Main pipeline canvas -->
+        <div id="pipeline-canvas-container" class="pipeline-canvas-container"></div>
+
+        <!-- Right sidebar: module details (hidden until a module is clicked) -->
+        <aside id="right-sidebar" class="right-sidebar hidden">
+          <div class="sidebar-title-bar">
+            <h2 id="details-title">Module Details</h2>
+            <button id="close-details" class="sidebar-close" title="Close">&#x2715;</button>
+          </div>
+          <div id="details-content" class="sidebar-body"></div>
+        </aside>
+
+      </div>
+    </div>
+
+    <!-- ── Placeholder tabs ──────────────────────────────────────── -->
+    <div id="tab-results"  class="tab-content" role="tabpanel">
+      <div class="tab-placeholder">Results — coming soon</div>
+    </div>
+    <div id="tab-sampling" class="tab-content" role="tabpanel">
+      <div class="tab-placeholder">Sampling — coming soon</div>
+    </div>
+    <div id="tab-campaign" class="tab-content" role="tabpanel">
+      <div class="tab-placeholder">Campaign — coming soon</div>
+    </div>
+  </main>
+
+  <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/pipeline.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
