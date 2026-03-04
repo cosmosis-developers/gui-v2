@@ -19,15 +19,55 @@ def _safe_str(val):
 
 
 def _section_names(port_dict):
-    """Return the top-level section names from an inputs/outputs mapping.
-
-    Each key in the mapping is a section name (e.g. 'cosmological_parameters'),
-    and its value is a dict of individual parameters.  We return just the
-    section-name strings so the UI can show them as port labels.
-    """
+    """Return the top-level section names from an inputs/outputs mapping."""
     if not isinstance(port_dict, dict):
         return []
     return [k for k, v in port_dict.items() if k and isinstance(v, dict)]
+
+
+def _extract_section_items(section_dict):
+    """Extract individual parameter info from a section dict.
+
+    Returns a list of ``{"name", "type", "description"}`` dicts for each
+    parameter key found inside the section.
+    """
+    if not isinstance(section_dict, dict):
+        return []
+    result = []
+    for param_name, info in section_dict.items():
+        if not param_name or not isinstance(info, dict):
+            continue
+        result.append({
+            "name": str(param_name),
+            "type": _safe_str(info.get("type", "")),
+            "description": _safe_str(info.get("meaning", "")),
+        })
+    return result
+
+
+def _extract_params(params_dict):
+    """Extract module configuration parameters from the ``params`` key.
+
+    Returns a list of ``{"name", "type", "default", "meaning"}`` dicts.
+    Default values that are explicitly ``None``/empty in the YAML are
+    normalised to Python ``None``.
+    """
+    if not isinstance(params_dict, dict):
+        return []
+    result = []
+    for name, info in params_dict.items():
+        if not name or not isinstance(info, dict):
+            continue
+        default = info.get("default")
+        if default is not None and str(default).strip().lower() in ("", "none", "null"):
+            default = None
+        result.append({
+            "name": str(name),
+            "type": _safe_str(info.get("type", "")),
+            "default": default,
+            "meaning": _safe_str(info.get("meaning", "")),
+        })
+    return result
 
 
 def parse_module_yaml(yaml_text, source_path=""):
@@ -40,10 +80,14 @@ def parse_module_yaml(yaml_text, source_path=""):
     data so that other parts of the application can access all fields without
     re-parsing.
 
-    Inputs and outputs are represented as lists of ``{"name": section_name,
-    "type": "section", "description": ""}`` dicts, using the YAML section
-    names (e.g. ``cosmological_parameters``) rather than individual parameter
-    names.
+    Inputs and outputs are represented as lists of section dicts::
+
+        {"name": section_name, "type": "section", "description": "",
+         "items": [{"name": param_name, "type": ..., "description": ...}, ...]}
+
+    ``params`` contains the module's configuration parameters::
+
+        [{"name": ..., "type": ..., "default": ..., "meaning": ...}, ...]
     """
     try:
         data = yaml.safe_load(yaml_text)
@@ -66,11 +110,31 @@ def parse_module_yaml(yaml_text, source_path=""):
         explanation = _safe_str(data.get("explanation", ""))
         description = explanation.split("\n")[0].strip().strip('" ')
 
-    inputs_raw = data.get("inputs") or {}
+    inputs_raw  = data.get("inputs")  or {}
     outputs_raw = data.get("outputs") or {}
+    params_raw  = data.get("params")  or {}
 
-    input_sections = _section_names(inputs_raw)
-    output_sections = _section_names(outputs_raw)
+    inputs = [
+        {
+            "name": s,
+            "type": "section",
+            "description": "",
+            "items": _extract_section_items(inputs_raw[s]),
+        }
+        for s in _section_names(inputs_raw)
+    ]
+
+    outputs = [
+        {
+            "name": s,
+            "type": "section",
+            "description": "",
+            "items": _extract_section_items(outputs_raw[s]),
+        }
+        for s in _section_names(outputs_raw)
+    ]
+
+    params = _extract_params(params_raw)
 
     # Build a stable id from the name field
     module_id = re.sub(r"[^a-zA-Z0-9_]", "_", name).lower().strip("_")
@@ -80,14 +144,9 @@ def parse_module_yaml(yaml_text, source_path=""):
         "name": name,
         "category": category,
         "description": description,
-        "inputs": [
-            {"name": s, "type": "section", "description": ""}
-            for s in input_sections
-        ],
-        "outputs": [
-            {"name": s, "type": "section", "description": ""}
-            for s in output_sections
-        ],
+        "inputs": inputs,
+        "outputs": outputs,
+        "params": params,
         # Retain the complete parsed YAML for future use
         "_raw": data,
         "_source": source_path,

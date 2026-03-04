@@ -278,9 +278,38 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 .port-edge      { pointer-events: none; }
 .insertion-indicator { pointer-events: none; }
 
+/* Expandable section boxes */
+.section-port { cursor: pointer; }
+.section-port:hover { filter: brightness(0.93); }
+
+/* Chevron inside port boxes */
+.port-chevron {
+  font-family: inherit;
+  font-size: 8px;
+  fill: var(--text-light);
+}
+
+/* Sub-parameter boxes */
+.port-rect.input-sub-port  { fill: #bbf7d0; stroke: #16a34a; }
+.port-rect.output-sub-port { fill: #fde68a; stroke: #ca8a04; }
+
+.sub-label {
+  font-family: inherit;
+  font-size: 9px;
+  fill: var(--text);
+  pointer-events: none;
+}
+
+/* Sub-connector: thinner, lighter than section connector */
+.sub-connector {
+  stroke: #94a3b8;
+  stroke-width: 0.75;
+  stroke-dasharray: 2 2;
+}
+
 /* ── Right sidebar ─────────────────────────────────────────────── */
 .right-sidebar {
-  width: 270px;
+  width: 300px;
   flex-shrink: 0;
   background: var(--sidebar-bg);
   border-left: 1px solid var(--border);
@@ -353,8 +382,46 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 .port-detail.input  { background: var(--inp-bg);  border-left: 3px solid var(--inp-border); }
 .port-detail.output { background: var(--out-bg);  border-left: 3px solid var(--out-border); }
 
+/* Expandable port rows in the sidebar */
+.port-detail.expandable-port { cursor: pointer; }
+.port-detail.expandable-port:hover { filter: brightness(0.96); }
+
+.sidebar-chevron {
+  display: inline-block;
+  font-size: 9px;
+  margin-right: 4px;
+  color: var(--text-light);
+}
+
+/* Sub-param list inside an expanded section */
+.sub-params-list {
+  margin: 2px 0 6px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sub-param-row {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sub-param-row.input  { background: #d1fce8; border-left: 2px solid #16a34a; }
+.sub-param-row.output { background: #fef0a0; border-left: 2px solid #ca8a04; }
+
+.sub-param-name {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-weight: 600;
+  font-size: 11px;
+}
+
 .port-name {
-  display: block;
+  display: flex;
+  align-items: center;
   font-size: 11px;
   font-weight: 600;
   font-family: "SFMono-Regular", Consolas, monospace;
@@ -381,3 +448,74 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* ── Params form ───────────────────────────────────────────────── */
+.params-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.param-name-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  width: fit-content;
+}
+.param-name-btn:hover { color: var(--primary); text-decoration: underline; }
+
+.param-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.param-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--text);
+  transition: border-color 0.12s;
+}
+.param-input:focus { outline: none; border-color: var(--primary); }
+.param-input.param-input-invalid { border-color: #ef4444; background: #fff5f5; }
+
+.param-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+.param-error {
+  font-size: 10px;
+  color: #dc2626;
+}
+.param-error.hidden { display: none; }
+
+.param-meaning {
+  font-size: 11px;
+  color: var(--text-light);
+  background: #f1f5f9;
+  border-left: 2px solid var(--border);
+  padding: 4px 7px;
+  border-radius: 0 4px 4px 0;
+  line-height: 1.4;
+}
+.param-meaning.hidden { display: none; }
