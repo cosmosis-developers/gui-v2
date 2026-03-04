@@ -4,7 +4,7 @@
  * Handles:
  *   - Tab switching
  *   - Socket.IO connection (receives available modules & initial pipeline)
- *   - Left sidebar: rendering draggable module cards
+ *   - Left sidebar: rendering draggable module cards, "Open Library" directory picker
  *   - Right sidebar: showing details for a selected module
  */
 document.addEventListener("DOMContentLoaded", () => {
@@ -39,17 +39,80 @@ document.addEventListener("DOMContentLoaded", () => {
 
   socket.on("available_modules", (modules) => {
     renderModuleLibrary(modules);
+    setScanStatus("", false);
   });
 
   socket.on("pipeline_update", (modules) => {
     pipeline.setModules(modules);
   });
 
+  socket.on("scan_error", (data) => {
+    setScanStatus("Error: " + (data.message || "unknown error"), true);
+  });
+
+  // ── Open Library button ───────────────────────────────────────
+
+  const openLibraryBtn   = document.getElementById("open-library-btn");
+  const libraryDirInput  = document.getElementById("library-dir-input");
+  const scanStatusEl     = document.getElementById("scan-status");
+
+  openLibraryBtn.addEventListener("click", () => {
+    libraryDirInput.value = ""; // reset so same folder can be re-selected
+    libraryDirInput.click();
+  });
+
+  libraryDirInput.addEventListener("change", () => {
+    const files = Array.from(libraryDirInput.files);
+    // Keep only module.yaml files
+    const yamlFiles = files.filter((f) => f.name === "module.yaml");
+
+    if (yamlFiles.length === 0) {
+      setScanStatus("No module.yaml files found in the selected directory.", true);
+      return;
+    }
+
+    setScanStatus(`Reading ${yamlFiles.length} module.yaml file(s)…`, false);
+
+    // Read all files as text, then send to server for parsing
+    Promise.all(
+      yamlFiles.map((file) =>
+        file.text().then((content) => ({
+          path: file.webkitRelativePath || file.name,
+          content,
+        }))
+      )
+    ).then((fileList) => {
+      setScanStatus(`Scanning ${fileList.length} module.yaml file(s)…`, false);
+      socket.emit("scan_library", fileList);
+    }).catch((err) => {
+      setScanStatus("Failed to read files: " + err.message, true);
+    });
+  });
+
+  function setScanStatus(msg, isError) {
+    if (!msg) {
+      scanStatusEl.classList.add("hidden");
+      scanStatusEl.textContent = "";
+      return;
+    }
+    scanStatusEl.textContent = msg;
+    scanStatusEl.classList.remove("hidden");
+    scanStatusEl.classList.toggle("scan-status-error", isError);
+  }
+
   // ── Left sidebar: module library ─────────────────────────────
 
   function renderModuleLibrary(modules) {
     const list = document.getElementById("module-list");
     list.innerHTML = "";
+
+    if (modules.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "no-ports";
+      empty.textContent = "No modules loaded. Use \u201cOpen Library\u201d to load a CosmoSIS standard library.";
+      list.appendChild(empty);
+      return;
+    }
 
     // Group modules by category
     const groups = {};
@@ -64,7 +127,7 @@ document.addEventListener("DOMContentLoaded", () => {
       section.className = "category-group";
 
       const header = document.createElement("button");
-      header.className = "category-toggle expanded";
+      header.className = "category-toggle";
       header.innerHTML = `<span class="category-chevron"></span>${escHtml(catName)}`;
       header.addEventListener("click", () => {
         const isOpen = header.classList.toggle("expanded");
@@ -73,6 +136,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const body = document.createElement("div");
       body.className = "category-modules";
+      body.style.display = "none";
 
       mods.forEach((mod) => {
         const card = document.createElement("div");
