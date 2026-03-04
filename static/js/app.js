@@ -30,26 +30,35 @@ document.addEventListener("DOMContentLoaded", () => {
   const socket = io();
   socket.on("connect", () => console.log("[socket] connected:", socket.id));
   socket.on("available_modules", modules => { renderModuleLibrary(modules); setScanStatus("", false); });
-  socket.on("pipeline_update",   modules => pipeline.setModules(modules));
+  socket.on("pipeline_update",   modules => { pipeline.setModules(modules); setScanStatus("", false); });
   socket.on("scan_error",        data    => setScanStatus("Error: " + (data.message || "unknown error"), true));
+  socket.on("pipeline_load_error", data  => setScanStatus("Pipeline load error: " + (data.message || "unknown"), true));
 
   // ── Open Library button ───────────────────────────────────────
-  const openLibraryBtn  = document.getElementById("open-library-btn");
-  const libraryDirInput = document.getElementById("library-dir-input");
-  const scanStatusEl    = document.getElementById("scan-status");
+  const openLibraryBtn = document.getElementById("open-library-btn");
+  const scanStatusEl   = document.getElementById("scan-status");
 
   openLibraryBtn.addEventListener("click", () => {
-    libraryDirInput.value = "";
-    libraryDirInput.click();
+    const dir = prompt(
+      "Enter the path to the CosmoSIS standard library directory:",
+      ""
+    );
+    if (dir === null || dir.trim() === "") return; // cancelled
+    setScanStatus("Scanning\u2026", false);
+    socket.emit("scan_library_dir", { path: dir.trim() });
   });
 
-  libraryDirInput.addEventListener("change", () => {
-    const yamlFiles = Array.from(libraryDirInput.files).filter(f => f.name === "module.yaml");
-    if (!yamlFiles.length) { setScanStatus("No module.yaml files found.", true); return; }
-    setScanStatus(`Reading ${yamlFiles.length} module.yaml file(s)\u2026`, false);
-    Promise.all(yamlFiles.map(f => f.text().then(content => ({ path: f.webkitRelativePath || f.name, content }))))
-      .then(list => { setScanStatus(`Scanning ${list.length} file(s)\u2026`, false); socket.emit("scan_library", list); })
-      .catch(err  => setScanStatus("Failed to read files: " + err.message, true));
+  // ── Open Pipeline button ──────────────────────────────────────
+  const openPipelineBtn = document.getElementById("open-pipeline-btn");
+
+  openPipelineBtn.addEventListener("click", () => {
+    const iniPath = prompt(
+      "Enter the path to a CosmoSIS pipeline .ini file:",
+      ""
+    );
+    if (iniPath === null || iniPath.trim() === "") return;
+    setScanStatus("Loading pipeline\u2026", false);
+    socket.emit("load_pipeline_ini", { path: iniPath.trim() });
   });
 
   function setScanStatus(msg, isError) {

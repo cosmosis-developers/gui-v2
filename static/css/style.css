@@ -141,6 +141,26 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 }
 .open-library-btn:hover { background: var(--primary-dark); }
 
+.open-pipeline-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--white);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.open-pipeline-btn:hover { background: var(--primary); color: var(--white); }
+
 .scan-status {
   padding: 4px 8px;
   font-size: 11px;
