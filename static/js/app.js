@@ -38,27 +38,45 @@ document.addEventListener("DOMContentLoaded", () => {
   const openLibraryBtn = document.getElementById("open-library-btn");
   const scanStatusEl   = document.getElementById("scan-status");
 
-  openLibraryBtn.addEventListener("click", () => {
-    const dir = prompt(
-      "Enter the path to the CosmoSIS standard library directory:",
-      ""
-    );
-    if (dir === null || dir.trim() === "") return; // cancelled
+  openLibraryBtn.addEventListener("click", async () => {
+    let dir;
+    if (window.electronAPI) {
+      // Running inside Electron — use the native OS directory picker.
+      dir = await window.electronAPI.openDirectory();
+      if (!dir) return; // user cancelled
+    } else {
+      // Fallback for plain-browser development.
+      dir = prompt(
+        "Enter the path to the CosmoSIS standard library directory:",
+        ""
+      );
+      if (dir === null || dir.trim() === "") return;
+      dir = dir.trim();
+    }
     setScanStatus("Scanning\u2026", false);
-    socket.emit("scan_library_dir", { path: dir.trim() });
+    socket.emit("scan_library_dir", { path: dir });
   });
 
   // ── Open Pipeline button ──────────────────────────────────────
   const openPipelineBtn = document.getElementById("open-pipeline-btn");
 
-  openPipelineBtn.addEventListener("click", () => {
-    const iniPath = prompt(
-      "Enter the path to a CosmoSIS pipeline .ini file:",
-      ""
-    );
-    if (iniPath === null || iniPath.trim() === "") return;
+  openPipelineBtn.addEventListener("click", async () => {
+    let iniPath;
+    if (window.electronAPI) {
+      // Running inside Electron — use the native OS file picker.
+      iniPath = await window.electronAPI.openIniFile();
+      if (!iniPath) return; // user cancelled
+    } else {
+      // Fallback for plain-browser development.
+      iniPath = prompt(
+        "Enter the path to a CosmoSIS pipeline .ini file:",
+        ""
+      );
+      if (iniPath === null || iniPath.trim() === "") return;
+      iniPath = iniPath.trim();
+    }
     setScanStatus("Loading pipeline\u2026", false);
-    socket.emit("load_pipeline_ini", { path: iniPath.trim() });
+    socket.emit("load_pipeline_ini", { path: iniPath });
   });
 
   function setScanStatus(msg, isError) {

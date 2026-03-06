@@ -287,4 +287,4 @@ def _ini_section_items(ini, section):
 
 
 if __name__ == "__main__":
-    socketio.run(app, debug=True, port=5000)
+    socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True)

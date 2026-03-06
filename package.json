@@ -1,0 +1,15 @@
+{
+  "name": "cosmosis-gui",
+  "version": "0.1.0",
+  "description": "CosmoSIS graphical pipeline editor",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:dev": "FLASK_DEBUG=1 electron ."
+  },
+  "keywords": ["cosmosis", "pipeline", "electron"],
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^34.0.0"
+  }
+}

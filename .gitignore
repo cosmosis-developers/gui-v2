@@ -18,6 +18,12 @@ env/
 instance/
 .flask_session/
 
+# Electron / Node
+node_modules/
+package-lock.json
+out/
+dist-electron/
+
 # IDE / OS
 .DS_Store
 .idea/
