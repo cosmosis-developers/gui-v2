@@ -19,7 +19,7 @@ class PipelineCanvas {
 
   static MH   = 58;   // module box height
   static MS   = 130;  // vertical gap between module boxes
-  static PADV = 60;   // top / bottom canvas padding
+  static PADV = 100;  // top / bottom canvas padding (extra room for expanded sub-params)
   static PADH = 40;   // minimum left / right canvas padding
 
   // Section (outer) port boxes
@@ -32,7 +32,7 @@ class PipelineCanvas {
   // Sub-parameter boxes (shown when a section is expanded)
   static SPH     = 18;  // sub-param box height
   static SPG     = 3;   // vertical gap between sub-param boxes
-  static SPO     = 8;   // gap: section box far-side ↔ sub-param box near-side
+  static SPO     = 16;  // gap: section box far-side ↔ sub-param box near-side
   static SPW_MIN = 70;  // minimum sub-param box width
   static SPW_PAD = 12;  // total inner horizontal text padding
 
@@ -80,9 +80,17 @@ class PipelineCanvas {
 
   /** Called from the sidebar when the user expands/collapses a section there. */
   togglePortFromSidebar(instanceId, portType, portIdx) {
-    const key = `${instanceId}|${portType}|${portIdx}`;
-    if (this.expandedPorts.has(key)) this.expandedPorts.delete(key);
-    else                              this.expandedPorts.add(key);
+    const key         = `${instanceId}|${portType}|${portIdx}`;
+    const wasExpanded = this.expandedPorts.has(key);
+
+    // Close any other open sections of the same type for this module.
+    for (const k of [...this.expandedPorts]) {
+      if (k.startsWith(`${instanceId}|${portType}|`)) {
+        this.expandedPorts.delete(k);
+      }
+    }
+
+    if (!wasExpanded) this.expandedPorts.add(key);
     this._render();
   }
 
@@ -349,10 +357,15 @@ class PipelineCanvas {
       const hasItems = port.type === "section" && (port.items || []).length > 0;
       const expanded = hasItems && this.expandedPorts.has(key);
 
-      // Bezier connector to/from the MODULE CENTRE Y (not the port's own Y)
-      const conn = isInput
-        ? this._makeBezierConnector(portX + pw, cy, mx,      my + MH / 2, "left")
-        : this._makeBezierConnector(mx + mw,     my + MH / 2, portX, cy,  "right");
+      // Straight dashed connector between port and module.
+      // Input: right edge of section → left edge of module.
+      // Output: right edge of module → left edge of section.
+      const conn = this._el("path");
+      conn.setAttribute("fill",  "none");
+      conn.setAttribute("class", "port-connector");
+      conn.setAttribute("d", isInput
+        ? `M ${portX + pw} ${cy} L ${mx} ${my + MH / 2}`
+        : `M ${mx + mw} ${my + MH / 2} L ${portX} ${cy}`);
       this.svg.appendChild(conn);
 
       const portCls = (isInput ? "input-port" : "output-port") +
@@ -395,10 +408,15 @@ class PipelineCanvas {
           const subY = subStartY + k * (SPH + SPG);
           const subCY= subY + SPH / 2;
 
-          const subConn = isInput
-            ? this._makeBezierConnector(portX,      cy, subX + spw, subCY, "left")
-            : this._makeBezierConnector(portX + pw, cy, subX,       subCY, "right");
+          // Straight dashed connector between section centre and sub-param.
+          // Input:  right edge of sub-param → left edge of section.
+          // Output: right edge of section  → left edge of sub-param.
+          const subConn = this._el("path");
+          subConn.setAttribute("fill",  "none");
           subConn.setAttribute("class", "sub-connector");
+          subConn.setAttribute("d", isInput
+            ? `M ${subX + spw} ${subCY} L ${portX} ${cy}`
+            : `M ${portX + pw}  ${cy}   L ${subX}  ${subCY}`);
           this.svg.appendChild(subConn);
 
           const subRect = this._makePortRect(subX, subY, spw,
@@ -439,13 +457,16 @@ class PipelineCanvas {
         const srcBox = srcOutPos[j].find(b => b.name === input.name);
         if (!srcBox) continue;
 
-        // Arc: right edge of source output box → right edge of selected input box
-        const arcX = inPortX - 50;
+        // Arc: bottom-centre of source output box → left edge of selected input box.
+        // Exits going downward then sweeps left to arrive horizontally at the input.
+        const srcBotX = srcBox.portX + srcBox.portW / 2;
+        const srcBotY = srcBox.portY + PH;
+        const dy      = inCY - srcBotY;
         const d = [
-          `M ${srcBox.portX + srcBox.portW} ${srcBox.cy}`,
-          `C ${arcX} ${srcBox.cy},`,
-          `  ${arcX} ${inCY},`,
-          `  ${inPortX + inPW} ${inCY}`,
+          `M ${srcBotX} ${srcBotY}`,
+          `C ${srcBotX} ${srcBotY + dy * 0.5},`,
+          `  ${inPortX - 40} ${inCY},`,
+          `  ${inPortX} ${inCY}`,
         ].join(" ");
 
         const path = this._el("path");
@@ -566,9 +587,20 @@ class PipelineCanvas {
   }
 
   _toggleSection(instanceId, portType, portIdx) {
-    const key = `${instanceId}|${portType}|${portIdx}`;
-    if (this.expandedPorts.has(key)) this.expandedPorts.delete(key);
-    else                              this.expandedPorts.add(key);
+    const key         = `${instanceId}|${portType}|${portIdx}`;
+    const wasExpanded = this.expandedPorts.has(key);
+
+    // Close any other open sections of the same type for this module
+    // (input sections are independent from output sections).
+    for (const k of [...this.expandedPorts]) {
+      if (k.startsWith(`${instanceId}|${portType}|`)) {
+        this.expandedPorts.delete(k);
+      }
+    }
+
+    // If the section was not already open, open it now.
+    if (!wasExpanded) this.expandedPorts.add(key);
+
     this._render();
     document.dispatchEvent(new CustomEvent("pipeline:sectionToggled", {
       detail: { instanceId, portType, portIdx, expanded: this.expandedPorts.has(key) },
