@@ -36,7 +36,7 @@ npm start
 ```
 
 This will:
-1. Spawn the Python Flask/Socket.IO backend on `http://localhost:5000`.
+1. Spawn the Python Flask/Socket.IO backend on `http://localhost:8080`.
 2. Open the Electron window once the backend is ready.
 
 ---
@@ -63,5 +63,5 @@ page in a regular browser (file-system dialogs will fall back to `prompt()`):
 
 ```bash
 python app.py
-# then open http://localhost:5000
+# then open http://localhost:8080
 ```

@@ -4,7 +4,7 @@
  * Responsibilities:
  *  1. Spawn the Python Flask / Socket.IO backend as a child process.
  *  2. Wait until the backend HTTP server is accepting connections.
- *  3. Open a BrowserWindow pointing at http://localhost:5000.
+ *  3. Open a BrowserWindow pointing at http://localhost:8080.
  *  4. Forward native OS dialog requests from the renderer via ipcMain.
  *  5. Terminate the Python process when the window is closed.
  */
@@ -15,7 +15,7 @@ const http    = require("http");
 const { spawn } = require("child_process");
 
 // ── Configuration ──────────────────────────────────────────────────────────
-const BACKEND_PORT    = 5000;
+const BACKEND_PORT    = 8080;
 const BACKEND_URL     = `http://localhost:${BACKEND_PORT}`;
 const POLL_INTERVAL_MS = 200;   // how often to ping the backend while starting
 const POLL_TIMEOUT_MS  = 30000; // give up after 30 s
