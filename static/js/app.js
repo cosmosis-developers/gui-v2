@@ -337,7 +337,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     return wrap;
   }
-  }
 
   function _buildSetupOutputSection(outputText) {
     const section = document.createElement("div");
