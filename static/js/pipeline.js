@@ -18,7 +18,7 @@ class PipelineCanvas {
   static SAMPLER_INDEX = 0;
 
   static MH   = 58;   // module box height
-  static MS   = 130;  // vertical gap between module boxes
+  static MS   = 65;   // vertical gap between module boxes
   static PADV = 100;  // top / bottom canvas padding (extra room for expanded sub-params)
   static PADH = 40;   // minimum left / right canvas padding
 

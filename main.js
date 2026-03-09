@@ -49,8 +49,15 @@ function startWorker() {
   );
 
   // Read responses line-by-line from the worker's stdout.
+  // Only lines that begin with '{' are JSON-RPC responses; any other output
+  // (e.g. direct prints from C extensions inside cosmosis that bypass the
+  // Python-level stdout redirect) is forwarded to stderr for diagnostics.
   const rl = readline.createInterface({ input: pythonWorker.stdout });
   rl.on("line", line => {
+    if (!line.startsWith("{")) {
+      if (line.trim()) process.stderr.write(`[worker/stdout] ${line}\n`);
+      return;
+    }
     let resp;
     try { resp = JSON.parse(line); }
     catch (e) { console.error("[worker] JSON parse error:", e.message, "Line:", line); return; }

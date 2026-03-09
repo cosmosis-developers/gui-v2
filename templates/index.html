@@ -22,31 +22,34 @@
     <div id="tab-pipeline" class="tab-content active" role="tabpanel">
       <div class="pipeline-layout">
 
-        <!-- Left sidebar: draggable module library -->
+        <!-- Left sidebar: pipeline actions + module library -->
         <aside class="left-sidebar">
+          <!-- Pipeline actions: prepare + run (above module library) -->
+          <div class="pipeline-actions">
+            <div class="pipeline-actions-header">Pipeline</div>
+            <button id="open-pipeline-btn" class="open-pipeline-btn" title="Load a pipeline from a CosmoSIS .ini file">
+              &#128196; Open Pipeline
+            </button>
+            <button id="prepare-pipeline-btn" class="action-btn action-btn-primary" disabled
+              title="Set verbosity=noisy and build a LikelihoodPipeline from the loaded .ini file">
+              &#9881; Prepare Pipeline
+            </button>
+            <button id="run-likelihood-btn" class="action-btn action-btn-secondary" disabled
+              title="Run one likelihood evaluation using the prepared pipeline">
+              &#9654; Run Likelihood
+            </button>
+            <div id="pipeline-status" class="pipeline-status hidden"></div>
+          </div>
+
+          <!-- Module library -->
           <div class="sidebar-header">
             Module Library
             <button id="open-library-btn" class="open-library-btn" title="Load modules from a local CosmoSIS standard library directory">
               &#128194; Open Library
             </button>
-            <button id="open-pipeline-btn" class="open-pipeline-btn" title="Load a pipeline from a CosmoSIS .ini file">
-              &#128196; Open Pipeline
-            </button>
           </div>
           <div id="scan-status" class="scan-status hidden"></div>
           <div id="module-list" class="module-list"></div>
-
-          <!-- Pipeline actions: prepare + run -->
-          <div class="pipeline-actions">
-            <div class="pipeline-actions-header">Pipeline</div>
-            <button id="prepare-pipeline-btn" class="action-btn action-btn-primary" title="Set verbosity=noisy and build a LikelihoodPipeline from the loaded .ini file">
-              &#9881; Prepare Pipeline
-            </button>
-            <button id="run-likelihood-btn" class="action-btn action-btn-secondary" title="Run one likelihood evaluation using the prepared pipeline">
-              &#9654; Run Likelihood
-            </button>
-            <div id="pipeline-status" class="pipeline-status hidden"></div>
-          </div>
         </aside>
 
         <!-- Main pipeline canvas -->

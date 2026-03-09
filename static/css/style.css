@@ -543,7 +543,7 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 /* ── Pipeline Actions section (bottom of left sidebar) ─────────── */
 .pipeline-actions {
   flex-shrink: 0;
-  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   padding: 10px 14px;
   display: flex;
   flex-direction: column;

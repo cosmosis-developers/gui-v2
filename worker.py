@@ -23,7 +23,6 @@ deserialises each request line and dispatches it to the appropriate method.
 import io
 import json
 import os
-import re
 import sys
 from contextlib import redirect_stderr, redirect_stdout
 
@@ -376,34 +375,71 @@ def _ini_section_items(ini, section):
 def _parse_module_output(combined, module_names):
     """Split captured output text into per-module chunks.
 
-    Strategy: scan line-by-line.  Whenever a line contains ``[module_name]``
-    (the typical CosmoSIS log prefix), attribute that line — and all
-    subsequent untagged lines — to that module.  Lines with no recognisable
-    tag that precede the first recognised module tag are attributed to the
-    first module by default.
+    CosmoSIS prints ``Setting up module <name>`` before each module's setup
+    output, and ``Setup all pipeline modules`` at the very end.  We use these
+    boundary markers to attribute lines to the correct module.
+
+    Lines that appear before the first ``Setting up module`` marker are
+    attributed to the first module (if any).
 
     Returns a list of ``{"ini_section": name, "output": text}`` dicts in
     pipeline order.
     """
-    # Compile a quick lookup: name → compiled pattern
-    patterns = {
-        name: re.compile(r"\[" + re.escape(name) + r"\]", re.IGNORECASE)
-        for name in module_names
-    }
+    if not module_names:
+        return []
 
-    module_lines  = {name: [] for name in module_names}
-    current_module = module_names[0] if module_names else None
+    _SETUP_PREFIX = "setting up module "
+    _SETUP_ALL    = "setup all pipeline modules"
 
-    for line in combined.splitlines():
-        attributed = False
-        for name in module_names:
-            if patterns[name].search(line):
-                current_module = name
-                module_lines[name].append(line)
-                attributed = True
-                break
-        if not attributed and current_module:
-            module_lines[current_module].append(line)
+    # Build ordered list of (line_index, module_name) for each "Setting up
+    # module <name>" boundary, then a sentinel for the final "Setup all …" line.
+    boundaries = []  # list of (line_number, module_name_or_None)
+    lines      = combined.splitlines()
+
+    for lineno, line in enumerate(lines):
+        stripped = line.strip()
+        lowered  = stripped.lower()
+        if lowered.startswith(_SETUP_PREFIX):
+            # Extract the module name token immediately after the prefix.
+            rest       = stripped[len(_SETUP_PREFIX):].strip()
+            parts      = rest.split()
+            name_token = parts[0].rstrip(".,:;") if parts else ""
+            # Find the matching pipeline module (case-insensitive prefix match).
+            matched = None
+            for m in module_names:
+                if m.lower() == name_token.lower():
+                    matched = m
+                    break
+            if matched is None and name_token:
+                # Fallback: accept any module whose name starts with the token.
+                for m in module_names:
+                    if m.lower().startswith(name_token.lower()):
+                        matched = m
+                        break
+            if matched:
+                boundaries.append((lineno, matched))
+        elif lowered.startswith(_SETUP_ALL):
+            boundaries.append((lineno, None))  # sentinel: end of last module
+
+    # Assign line ranges to modules.
+    # If there are no boundaries, all output goes to the first module.
+    module_lines = {name: [] for name in module_names}
+
+    if not boundaries:
+        # No "Setting up module" markers found — dump everything to the first module.
+        if module_names:
+            module_lines[module_names[0]] = lines
+    else:
+        # Lines before the first boundary → first recognised module.
+        first_boundary_line = boundaries[0][0]
+        if first_boundary_line > 0 and module_names:
+            module_lines[module_names[0]].extend(lines[:first_boundary_line])
+
+        for i, (start, name) in enumerate(boundaries):
+            if name is None:
+                break  # sentinel reached
+            end = boundaries[i + 1][0] if i + 1 < len(boundaries) else len(lines)
+            module_lines[name].extend(lines[start:end])
 
     return [
         {"ini_section": name, "output": "\n".join(module_lines[name])}

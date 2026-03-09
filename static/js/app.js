@@ -107,6 +107,10 @@ document.addEventListener("DOMContentLoaded", () => {
         modulePrepOutput.clear();
         pipeline.setModules(res.result);
         setScanStatus("", false);
+        // Enable Prepare Pipeline now that a file is loaded; reset run button.
+        preparePipelineBtn.disabled = false;
+        runLikelihoodBtn.disabled   = true;
+        setPipelineStatus("", "");
       }
     } catch (err) {
       setScanStatus("Pipeline load error: " + err.message, true);
@@ -156,8 +160,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // ── Run Likelihood button ─────────────────────────────────────
-  runLikelihoodBtn.disabled = true;
-
+  // (stays disabled until prepare_pipeline succeeds)
   runLikelihoodBtn.addEventListener("click", async () => {
     setPipelineStatus("Running likelihood\u2026", "");
     runLikelihoodBtn.disabled = true;
