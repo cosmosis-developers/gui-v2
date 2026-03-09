@@ -539,3 +539,87 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
   line-height: 1.4;
 }
 .param-meaning.hidden { display: none; }
+
+/* ── Pipeline Actions section (bottom of left sidebar) ─────────── */
+.pipeline-actions {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pipeline-actions-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-light);
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.12s, color 0.12s;
+  text-transform: none;
+  letter-spacing: 0;
+  border: none;
+}
+
+.action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.action-btn-primary {
+  background: var(--primary);
+  color: var(--white);
+  border: none;
+}
+.action-btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
+
+.action-btn-secondary {
+  background: var(--white);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+}
+.action-btn-secondary:hover:not(:disabled) { background: var(--primary); color: var(--white); }
+
+.pipeline-status {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-light);
+  background: var(--border);
+  border-radius: 4px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.pipeline-status.pipeline-status-error { color: #dc2626; background: #fee2e2; }
+.pipeline-status.pipeline-status-ok    { color: #15803d; background: #dcfce7; }
+.pipeline-status.hidden { display: none; }
+
+/* ── Module setup output in right sidebar ──────────────────────── */
+.setup-output-pre {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  color: var(--text);
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 7px 9px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  line-height: 1.4;
+}

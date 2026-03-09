@@ -3,9 +3,11 @@
  *
  * Handles:
  *   - Tab switching
- *   - IPC calls to the Python worker (replaces the previous Socket.IO layer)
- *   - Left sidebar: module library, "Open Library" directory picker
- *   - Right sidebar: module details with expandable sections and params form
+ *   - IPC calls to the Python Backend worker
+ *   - Left sidebar: module library, "Open Library" / "Open Pipeline" buttons
+ *   - Left sidebar: "Prepare Pipeline" / "Run Likelihood" buttons
+ *   - Right sidebar: module details with expandable sections, params form,
+ *     and per-module pipeline setup output
  */
 document.addEventListener("DOMContentLoaded", () => {
 
@@ -27,15 +29,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const pipeline = new PipelineCanvas("pipeline-canvas-container");
 
   // ── Python worker bridge ─────────────────────────────────────
-  // All Python calls go through window.electronAPI.call(method, params)
-  // which returns Promise<{ result, error }> via Electron IPC.
-
   async function pyCall(method, params = {}) {
     if (!window.electronAPI?.call) {
       throw new Error("Python worker not available (running outside Electron).");
     }
     return window.electronAPI.call(method, params);
   }
+
+  // ── Per-module setup output storage ──────────────────────────
+  // Key: ini_section name (string), Value: output text (string)
+  const modulePrepOutput = new Map();
 
   // ── Load initial data ─────────────────────────────────────────
   async function loadInitialData() {
@@ -62,15 +65,10 @@ document.addEventListener("DOMContentLoaded", () => {
   openLibraryBtn.addEventListener("click", async () => {
     let dir;
     if (window.electronAPI) {
-      // Running inside Electron — use the native OS directory picker.
       dir = await window.electronAPI.openDirectory();
-      if (!dir) return; // user cancelled
+      if (!dir) return;
     } else {
-      // Fallback for plain-browser development.
-      dir = prompt(
-        "Enter the path to the CosmoSIS standard library directory:",
-        ""
-      );
+      dir = prompt("Enter the path to the CosmoSIS standard library directory:", "");
       if (dir === null || dir.trim() === "") return;
       dir = dir.trim();
     }
@@ -91,15 +89,10 @@ document.addEventListener("DOMContentLoaded", () => {
   openPipelineBtn.addEventListener("click", async () => {
     let iniPath;
     if (window.electronAPI) {
-      // Running inside Electron — use the native OS file picker.
       iniPath = await window.electronAPI.openIniFile();
-      if (!iniPath) return; // user cancelled
+      if (!iniPath) return;
     } else {
-      // Fallback for plain-browser development.
-      iniPath = prompt(
-        "Enter the path to a CosmoSIS pipeline .ini file:",
-        ""
-      );
+      iniPath = prompt("Enter the path to a CosmoSIS pipeline .ini file:", "");
       if (iniPath === null || iniPath.trim() === "") return;
       iniPath = iniPath.trim();
     }
@@ -107,8 +100,14 @@ document.addEventListener("DOMContentLoaded", () => {
     setScanStatus("Loading pipeline\u2026", false);
     try {
       const res = await pyCall("load_pipeline_ini", { path: iniPath });
-      if (res.error) setScanStatus("Pipeline load error: " + res.error, true);
-      else { pipeline.setModules(res.result); setScanStatus("", false); }
+      if (res.error) {
+        setScanStatus("Pipeline load error: " + res.error, true);
+      } else {
+        // Clear any stale prep output from a previous pipeline.
+        modulePrepOutput.clear();
+        pipeline.setModules(res.result);
+        setScanStatus("", false);
+      }
     } catch (err) {
       setScanStatus("Pipeline load error: " + err.message, true);
     }
@@ -119,6 +118,71 @@ document.addEventListener("DOMContentLoaded", () => {
     scanStatusEl.textContent = msg;
     scanStatusEl.classList.remove("hidden");
     scanStatusEl.classList.toggle("scan-status-error", isError);
+  }
+
+  // ── Prepare Pipeline button ───────────────────────────────────
+  const preparePipelineBtn = document.getElementById("prepare-pipeline-btn");
+  const runLikelihoodBtn   = document.getElementById("run-likelihood-btn");
+  const pipelineStatusEl   = document.getElementById("pipeline-status");
+
+  preparePipelineBtn.addEventListener("click", async () => {
+    setPipelineStatus("Preparing pipeline\u2026", "");
+    preparePipelineBtn.disabled = true;
+    runLikelihoodBtn.disabled   = true;
+
+    try {
+      const res = await pyCall("prepare_pipeline", {});
+      if (res.error) {
+        setPipelineStatus(res.error, "error");
+      } else {
+        // Store per-module output.
+        modulePrepOutput.clear();
+        for (const entry of (res.result.modules || [])) {
+          if (entry.ini_section) {
+            modulePrepOutput.set(entry.ini_section, entry.output || "");
+          }
+        }
+        setPipelineStatus("Pipeline ready.", "ok");
+        runLikelihoodBtn.disabled = false;
+        // Refresh right sidebar if a module is selected.
+        const sel = pipeline.getSelectedModule();
+        if (sel && currentInstanceId === sel.instanceId) showDetails(sel);
+      }
+    } catch (err) {
+      setPipelineStatus("Error: " + err.message, "error");
+    } finally {
+      preparePipelineBtn.disabled = false;
+    }
+  });
+
+  // ── Run Likelihood button ─────────────────────────────────────
+  runLikelihoodBtn.disabled = true;
+
+  runLikelihoodBtn.addEventListener("click", async () => {
+    setPipelineStatus("Running likelihood\u2026", "");
+    runLikelihoodBtn.disabled = true;
+
+    try {
+      const res = await pyCall("run_likelihood", {});
+      if (res.error) {
+        setPipelineStatus(res.error, "error");
+        runLikelihoodBtn.disabled = false;
+      } else {
+        setPipelineStatus("Likelihood run complete.", "ok");
+        runLikelihoodBtn.disabled = false;
+      }
+    } catch (err) {
+      setPipelineStatus("Error: " + err.message, "error");
+      runLikelihoodBtn.disabled = false;
+    }
+  });
+
+  function setPipelineStatus(msg, kind) {
+    pipelineStatusEl.textContent = msg;
+    pipelineStatusEl.className   = "pipeline-status";
+    if (!msg) { pipelineStatusEl.classList.add("hidden"); return; }
+    if (kind === "error") pipelineStatusEl.classList.add("pipeline-status-error");
+    if (kind === "ok")    pipelineStatusEl.classList.add("pipeline-status-ok");
   }
 
   // ── Left sidebar: module library ─────────────────────────────
@@ -176,7 +240,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const detailsBody  = document.getElementById("details-content");
   const closeBtn     = document.getElementById("close-details");
 
-  /** instanceId of the module currently shown in the sidebar */
   let currentInstanceId = null;
 
   closeBtn.addEventListener("click", () => { hideDetails(); pipeline.deselect(); });
@@ -186,7 +249,6 @@ document.addEventListener("DOMContentLoaded", () => {
     else          hideDetails();
   });
 
-  /** Re-render the sidebar when a section is toggled in the canvas. */
   document.addEventListener("pipeline:sectionToggled", () => {
     const mod = pipeline.getSelectedModule();
     if (mod && mod.instanceId === currentInstanceId) showDetails(mod);
@@ -194,7 +256,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function showDetails(mod) {
     if (!mod) { hideDetails(); return; }
-    // Always work with the live reference so paramValues are up-to-date
     const live = pipeline.getSelectedModule() || mod;
     currentInstanceId = live.instanceId;
     detailsTitle.textContent = live.name;
@@ -213,7 +274,6 @@ document.addEventListener("DOMContentLoaded", () => {
   function _buildDetailsContent(mod) {
     const wrap = document.createElement("div");
 
-    // Description
     if (mod.description) {
       const p = document.createElement("p");
       p.className = "module-detail-desc";
@@ -221,15 +281,33 @@ document.addEventListener("DOMContentLoaded", () => {
       wrap.appendChild(p);
     }
 
-    // Inputs & outputs
     _appendPortSection(wrap, mod, "input",  mod.inputs  || []);
     _appendPortSection(wrap, mod, "output", mod.outputs || []);
 
-    // Params form
     const params = mod.params || [];
     if (params.length) wrap.appendChild(_buildParamsForm(mod));
 
+    // Show per-module pipeline setup output when available.
+    const sectionName = mod.ini_section;
+    if (sectionName && modulePrepOutput.has(sectionName)) {
+      const output = modulePrepOutput.get(sectionName);
+      if (output) wrap.appendChild(_buildSetupOutputSection(output));
+    }
+
     return wrap;
+  }
+
+  function _buildSetupOutputSection(outputText) {
+    const section = document.createElement("div");
+    section.className = "detail-section";
+    const h3 = document.createElement("h3");
+    h3.textContent = "Setup Output";
+    section.appendChild(h3);
+    const pre = document.createElement("pre");
+    pre.className = "setup-output-pre";
+    pre.textContent = outputText;
+    section.appendChild(pre);
+    return section;
   }
 
   function _appendPortSection(wrap, mod, portType, ports) {
@@ -255,7 +333,6 @@ document.addEventListener("DOMContentLoaded", () => {
         row.style.cursor = "pointer";
         row.addEventListener("click", () => {
           pipeline.togglePortFromSidebar(mod.instanceId, portType, i);
-          // sidebar refreshed via pipeline:sectionToggled → showDetails
         });
       } else {
         nameSpan.textContent = port.name;
@@ -270,7 +347,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       section.appendChild(row);
 
-      // Expanded sub-params
       if (hasItems && expanded) {
         const subWrap = document.createElement("div");
         subWrap.className = "sub-params-list";
@@ -306,7 +382,6 @@ document.addEventListener("DOMContentLoaded", () => {
     form.className = "params-form";
 
     mod.params.forEach(param => {
-      // Resolve current value: stored value → YAML default → empty
       const storedVal = (mod.paramValues || {})[param.name];
       const defVal    = param.default != null ? String(param.default) : "";
       const curVal    = storedVal !== undefined ? String(storedVal) : defVal;
@@ -314,7 +389,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const row = document.createElement("div");
       row.className = "param-row";
 
-      // Param name button (click to reveal/hide meaning)
       const nameBtn = document.createElement("button");
       nameBtn.type = "button";
       nameBtn.className = "param-name-btn";
@@ -322,13 +396,11 @@ document.addEventListener("DOMContentLoaded", () => {
       nameBtn.textContent = param.name;
       row.appendChild(nameBtn);
 
-      // Meaning tooltip (hidden by default)
       const meaning = document.createElement("div");
       meaning.className = "param-meaning hidden";
       meaning.textContent = param.meaning || "(no description)";
       nameBtn.addEventListener("click", () => meaning.classList.toggle("hidden"));
 
-      // Input widget
       const inputWrap = document.createElement("div");
       inputWrap.className = "param-input-wrap";
 
@@ -348,27 +420,40 @@ document.addEventListener("DOMContentLoaded", () => {
         input.className = "param-input";
         input.value = curVal;
         if (typeStr === "int" || typeStr === "integer") {
-          input.type = "number";
-          input.step = "1";
+          input.type        = "number";
+          input.step        = "1";
           input.placeholder = "integer";
         } else if (typeStr === "real" || typeStr === "float" || typeStr === "double") {
-          input.type = "number";
-          input.step = "any";
+          input.type        = "number";
+          input.step        = "any";
           input.placeholder = "number";
         } else {
-          input.type = "text";
+          input.type        = "text";
           input.placeholder = typeStr || "value";
         }
 
         const errSpan = document.createElement("span");
         errSpan.className = "param-error hidden";
 
+        // Debounced Python update — fires 400 ms after the last keystroke.
+        const debouncedPyUpdate = _debounce((section, key, val) => {
+          pyCall("update_param", { ini_section: section, key, value: val })
+            .catch(err => console.warn("[update_param]", err));
+        }, 400);
+
         input.addEventListener("input", () => {
           const valid = _validateParam(input.value, param.type);
           errSpan.classList.toggle("hidden", valid);
           errSpan.textContent = valid ? "" : `Expected ${param.type}`;
           input.classList.toggle("param-input-invalid", !valid);
-          if (valid) _storeParam(mod, param.name, _coerceParam(input.value, param.type));
+          if (valid) {
+            const coerced = _coerceParam(input.value, param.type);
+            _storeParam(mod, param.name, coerced);
+            const live = pipeline.modules.find(m => m.instanceId === mod.instanceId);
+            if (live && live.ini_section) {
+              debouncedPyUpdate(live.ini_section, param.name, String(coerced));
+            }
+          }
         });
         inputWrap.appendChild(errSpan);
       }
@@ -394,12 +479,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   /** Return true if the string value is valid for the given type string. */
   function _validateParam(val, typeStr) {
-    if (!val && val !== "0") return true; // empty is OK (param not set)
+    if (!val && val !== "0") return true;
     const t = (typeStr || "").toLowerCase();
     if (t === "int" || t === "integer") return /^-?\d+$/.test(val.trim());
     if (t === "real" || t === "float" || t === "double")
       return /^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(val.trim());
-    return true; // str, bool, unknown → always valid
+    return true;
   }
 
   /** Coerce a string to the appropriate JS type. */
@@ -411,9 +496,19 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ── Utility ───────────────────────────────────────────────────
+
   function escHtml(str) {
     return String(str)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;")
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  /** Return a debounced version of fn that fires delay ms after the last call. */
+  function _debounce(fn, delay) {
+    let timer;
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), delay);
+    };
   }
 });

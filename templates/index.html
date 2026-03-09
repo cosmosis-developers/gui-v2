@@ -35,6 +35,18 @@
           </div>
           <div id="scan-status" class="scan-status hidden"></div>
           <div id="module-list" class="module-list"></div>
+
+          <!-- Pipeline actions: prepare + run -->
+          <div class="pipeline-actions">
+            <div class="pipeline-actions-header">Pipeline</div>
+            <button id="prepare-pipeline-btn" class="action-btn action-btn-primary" title="Set verbosity=noisy and build a LikelihoodPipeline from the loaded .ini file">
+              &#9881; Prepare Pipeline
+            </button>
+            <button id="run-likelihood-btn" class="action-btn action-btn-secondary" title="Run one likelihood evaluation using the prepared pipeline">
+              &#9654; Run Likelihood
+            </button>
+            <div id="pipeline-status" class="pipeline-status hidden"></div>
+          </div>
         </aside>
 
         <!-- Main pipeline canvas -->
