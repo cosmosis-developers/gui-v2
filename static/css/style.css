@@ -10,10 +10,15 @@
   --module-fill:    #dbeafe;
   --module-stroke:  #93c5fd;
   --module-hover:   #bfdbfe;
+  --module-run-fill:   #d1fae5;
+  --module-run-stroke: #059669;
+  --module-run-hover:  #a7f3d0;
   --sel-fill:       #bfdbfe;
   --sel-stroke:     #3b82f6;
   --inp-bg:         #d1fae5;
   --inp-border:     #059669;
+  --inp-default-bg:     #fff7ed;
+  --inp-default-border: #f97316;
   --out-bg:         #fef3c7;
   --out-border:     #d97706;
   --bg:             #f8fafc;
@@ -260,12 +265,17 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
   stroke-width: 1.5;
 }
 .module-rect.permanent       { fill: var(--sampler-fill);  stroke: var(--sampler-stroke); }
+/* Run-ok state: module executed successfully */
+.module-rect.run-ok           { fill: var(--module-run-fill);  stroke: var(--module-run-stroke); }
+.module-rect.permanent.run-ok { fill: var(--module-run-fill);  stroke: var(--module-run-stroke); }
 .module-rect.selected        { fill: var(--sel-fill);       stroke: var(--sel-stroke); stroke-width: 2.5; }
 .module-rect.permanent.selected { fill: var(--sampler-hover); stroke: #7c3aed; stroke-width: 2.5; }
 
 .module-group { cursor: pointer; }
 .module-group:hover .module-rect          { fill: var(--module-hover); stroke: var(--primary); }
 .module-group:hover .module-rect.permanent { fill: var(--sampler-hover); stroke: #7c3aed; }
+.module-group:hover .module-rect.run-ok           { fill: var(--module-run-hover); stroke: var(--module-run-stroke); }
+.module-group:hover .module-rect.permanent.run-ok { fill: var(--module-run-hover); stroke: var(--module-run-stroke); }
 
 .module-text {
   fill: var(--text);
@@ -286,6 +296,8 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 .port-rect            { stroke-width: 1; }
 .port-rect.input-port  { fill: var(--inp-bg);  stroke: var(--inp-border); }
 .port-rect.output-port { fill: var(--out-bg);  stroke: var(--out-border); }
+/* Default input: READ-DEFAULT — value was provided by the module's own default */
+.port-rect.input-default-port { fill: var(--inp-default-bg); stroke: var(--inp-default-border); }
 
 .port-label {
   font-family: inherit;
@@ -312,6 +324,7 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 /* Sub-parameter boxes */
 .port-rect.input-sub-port  { fill: #bbf7d0; stroke: #16a34a; }
 .port-rect.output-sub-port { fill: #fde68a; stroke: #ca8a04; }
+.port-rect.input-default-sub-port { fill: #fed7aa; stroke: #f97316; }
 
 .sub-label {
   font-family: inherit;
@@ -401,6 +414,8 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 }
 .port-detail.input  { background: var(--inp-bg);  border-left: 3px solid var(--inp-border); }
 .port-detail.output { background: var(--out-bg);  border-left: 3px solid var(--out-border); }
+/* Default input (READ-DEFAULT): used module default — shown in amber */
+.port-detail.input-default { background: var(--inp-default-bg); border-left: 3px solid var(--inp-default-border); }
 
 /* Expandable port rows in the sidebar */
 .port-detail.expandable-port { cursor: pointer; }
@@ -432,6 +447,7 @@ main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 }
 .sub-param-row.input  { background: #d1fce8; border-left: 2px solid #16a34a; }
 .sub-param-row.output { background: #fef0a0; border-left: 2px solid #ca8a04; }
+.sub-param-row.input-default { background: #fed7aa; border-left: 2px solid #f97316; }
 
 .sub-param-name {
   font-family: "SFMono-Regular", Consolas, monospace;

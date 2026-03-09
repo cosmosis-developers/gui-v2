@@ -289,6 +289,7 @@ class PipelineCanvas {
     let cls = "module-rect";
     if (perm) cls += " permanent";
     if (sel)  cls += " selected";
+    if (module.runStatus === "ok") cls += " run-ok";
     rect.setAttribute("class", cls);
     g.appendChild(rect);
 
@@ -344,9 +345,21 @@ class PipelineCanvas {
     const { MH, PH, PG, PO, SPH, SPG, SPO } = PipelineCanvas;
     const id = module.instanceId;
 
+    // Use actual I/O from the last run when available; otherwise fall back to YAML.
+    const hasActual  = module.actualInputs || module.actualDefaults || module.actualOutputs;
+    const allInputs  = hasActual
+      ? [
+          ...(module.actualInputs   || []),
+          ...(module.actualDefaults || []).map(p => ({ ...p, _isDefault: true })),
+        ]
+      : (module.inputs  || []);
+    const allOutputs = hasActual
+      ? (module.actualOutputs || [])
+      : (module.outputs || []);
+
     const renderSection = (port, i, portType) => {
       const isInput  = portType === "input";
-      const allPorts = isInput ? (module.inputs || []) : (module.outputs || []);
+      const allPorts = isInput ? allInputs : allOutputs;
       const pw       = this._sectionBoxWidth(port.name);
       const totalH   = allPorts.length * (PH + PG) - PG;
       const startY   = my + (MH - totalH) / 2;
@@ -368,8 +381,9 @@ class PipelineCanvas {
         : `M ${mx + mw} ${my + MH / 2} L ${portX} ${cy}`);
       this.svg.appendChild(conn);
 
-      const portCls = (isInput ? "input-port" : "output-port") +
-                      (hasItems ? " section-port" : "");
+      const portCls = isInput
+        ? ((port._isDefault ? "input-default-port" : "input-port") + (hasItems ? " section-port" : ""))
+        : ("output-port" + (hasItems ? " section-port" : ""));
       const rect = this._makePortRect(portX, portY, pw, portCls);
       if (hasItems) {
         rect.style.cursor = "pointer";
@@ -419,8 +433,10 @@ class PipelineCanvas {
             : `M ${portX + pw}  ${cy}   L ${subX}  ${subCY}`);
           this.svg.appendChild(subConn);
 
-          const subRect = this._makePortRect(subX, subY, spw,
-                            isInput ? "input-sub-port" : "output-sub-port");
+          const subCls  = isInput
+            ? (port._isDefault ? "input-default-sub-port" : "input-sub-port")
+            : "output-sub-port";
+          const subRect = this._makePortRect(subX, subY, spw, subCls);
           subRect.setAttribute("height", String(SPH));
           subRect.setAttribute("rx",     "3");
           this.svg.appendChild(subRect);
@@ -430,8 +446,8 @@ class PipelineCanvas {
       }
     };
 
-    (module.inputs  || []).forEach((p, i) => renderSection(p, i, "input"));
-    (module.outputs || []).forEach((p, i) => renderSection(p, i, "output"));
+    allInputs .forEach((p, i) => renderSection(p, i, "input"));
+    allOutputs.forEach((p, i) => renderSection(p, i, "output"));
   }
 
   _appendPortEdges(selIdx, srcOutPos) {

@@ -20,12 +20,10 @@ All state is encapsulated in a single ``Backend`` instance.  The main loop
 deserialises each request line and dispatches it to the appropriate method.
 """
 
-import io
 import json
 import os
 import sys
 import threading
-from contextlib import redirect_stderr, redirect_stdout
 
 from inifile import Inifile
 from module_library import parse_module_yaml, scan_directory
@@ -53,6 +51,8 @@ class Backend:
         self._modules_by_yaml_path = {}
         # Retained after load_pipeline_ini; updated by update_param
         self._inifile  = None
+        # Set by load_pipeline_ini; used by run_likelihood for actual I/O attribution
+        self._pipeline_modules = []
         # Set by prepare_pipeline
         self._pipeline = None
         # Set by run_likelihood
@@ -109,9 +109,10 @@ class Backend:
         # Retain the Inifile so that param updates and pipeline creation can
         # operate on the same in-memory object.
         self._inifile = ini
-        # Reset pipeline / results whenever a new ini is loaded.
-        self._pipeline = None
-        self._results  = None
+        # Reset pipeline / results / per-module data whenever a new ini is loaded.
+        self._pipeline         = None
+        self._results          = None
+        self._pipeline_modules = []
 
         try:
             modules_str = ini.get("pipeline", "modules", fallback="")
@@ -139,6 +140,9 @@ class Backend:
                     param_values[key] = value
             mod_dict["paramValues"] = param_values
             pipeline_mods.append(mod_dict)
+
+        # Retain for later use by run_likelihood (actual I/O attribution).
+        self._pipeline_modules = pipeline_mods
 
         return pipeline_mods
 
@@ -231,28 +235,40 @@ class Backend:
 
         Calls ``pipeline.start_vector()`` then ``pipeline.run_results(v)``
         and stores the returned results object for later use.
+
+        Returns per-module actual I/O extracted from the DataBlock log so that
+        the frontend can replace the YAML-declared inputs/outputs with what was
+        actually accessed during the run.
         """
         if self._pipeline is None:
             raise ValueError(
                 "Pipeline not prepared. Click 'Prepare Pipeline' first."
             )
 
-        out_buf = io.StringIO()
-        err_buf = io.StringIO()
-
+        cap   = _FdCapture([1, 2])
+        error = None
         try:
-            with redirect_stdout(out_buf), redirect_stderr(err_buf):
-                v              = self._pipeline.start_vector()
-                self._results  = self._pipeline.run_results(v)
+            v             = self._pipeline.start_vector()
+            self._results = self._pipeline.run_results(v)
         except Exception as exc:
-            captured = out_buf.getvalue() + err_buf.getvalue()
-            raise RuntimeError(
-                f"Likelihood run failed: {exc}"
-                + (f"\n\n--- Captured output ---\n{captured}" if captured else "")
-            ) from exc
+            error = exc
+        finally:
+            captured = cap.finish()
 
-        print(f"[worker] run_likelihood results: {self._results}", file=sys.stderr)
-        return {"ok": True}
+        if error is not None:
+            raise RuntimeError(
+                f"Likelihood run failed: {error}"
+                + (f"\n\n--- Captured output ---\n{captured}" if captured else "")
+            )
+
+        block      = getattr(self._results, "block", None)
+        per_module = _extract_actual_module_io(block, self._pipeline_modules)
+
+        print(
+            f"[worker] run_likelihood: {len(per_module)} modules with actual I/O.",
+            file=sys.stderr,
+        )
+        return {"ok": True, "modules": per_module}
 
     # ── Internal helpers ───────────────────────────────────────────────────
 
@@ -469,6 +485,157 @@ class _FdCapture:
         # already warned that it's still alive, in which case the GIL protects
         # the list read against concurrent appends).
         return b"".join(self._chunks).decode("utf-8", errors="replace")
+
+
+def _normalize_dtype(data_type):
+    """Convert a DataBlock data_type (possibly a Python type object) to a display string."""
+    if data_type is None:
+        return ""
+    s = str(data_type)
+    # "<class 'numpy.ndarray'>" → "ndarray" → "array"
+    if s.startswith("<class '") and s.endswith("'>"):
+        s = s[8:-2]
+    # "numpy.float64" → "float64"
+    dot = s.rfind(".")
+    if dot >= 0:
+        s = s[dot + 1:]
+    s = s.lower()
+    if "ndarray" in s or s == "array":
+        return "array"
+    if s in ("float64", "float32", "float_", "float"):
+        return "real"
+    if s in ("int64", "int32", "int_", "int"):
+        return "int"
+    return s or ""
+
+
+def _extract_actual_module_io(block, pipeline_modules):
+    """Extract per-module actual I/O from a CosmoSIS DataBlock log.
+
+    Cross-references log entries (READ-OK / READ-DEFAULT / WRITE-OK /
+    REPLACE-OK) against each module's YAML-declared input and output sections.
+
+    Returns a list of dicts:
+
+        {"ini_section": str,
+         "actual_inputs":   [{"name": section, "type": "section",
+                               "items": [{"name": key, "type": dtype}]}],
+         "actual_defaults": [...],   # READ-DEFAULT entries — different colour
+         "actual_outputs":  [...]}   # WRITE-OK / REPLACE-OK entries
+    """
+    if block is None or not pipeline_modules:
+        return []
+
+    try:
+        count = block.get_log_count()
+    except Exception:
+        return []
+
+    _READ_TYPES  = {"read-ok", "read-default"}
+    _WRITE_TYPES = {"write-ok", "replace-ok"}
+
+    # Collect all log entries into two maps:
+    #   reads[(section_lc, name_lc)]  = {"access_type", "data_type", "section", "name"}
+    #   writes[(section_lc, name_lc)] = {"access_type", "data_type", "section", "name"}
+    # For reads: READ-OK supersedes READ-DEFAULT for the same key.
+    reads  = {}
+    writes = {}
+
+    for i in range(count):
+        try:
+            entry = block.get_log_entry(i)
+        except Exception:
+            continue
+        if not entry or len(entry) < 3:
+            continue
+
+        access_type = str(entry[0]).lower() if entry[0] is not None else ""
+        section     = str(entry[1])         if entry[1] is not None else ""
+        name        = str(entry[2])         if entry[2] is not None else ""
+        data_type   = _normalize_dtype(entry[3]) if len(entry) > 3 else ""
+
+        key = (section.lower(), name.lower())
+
+        if access_type in _WRITE_TYPES:
+            writes[key] = {
+                "access_type": access_type,
+                "data_type":   data_type,
+                "section":     section,
+                "name":        name,
+            }
+        elif access_type in _READ_TYPES:
+            existing = reads.get(key)
+            # READ-OK takes priority over READ-DEFAULT for the same key.
+            if existing is None or (
+                access_type == "read-ok" and existing["access_type"] == "read-default"
+            ):
+                reads[key] = {
+                    "access_type": access_type,
+                    "data_type":   data_type,
+                    "section":     section,
+                    "name":        name,
+                }
+
+    result = []
+    for mod in pipeline_modules:
+        ini_section = mod.get("ini_section")
+        if not ini_section:
+            continue  # sampler module — no ini section, skip
+
+        # Build lookup: lower-case section name → display name
+        input_sections  = {
+            p["name"].lower(): p["name"]
+            for p in (mod.get("inputs") or [])
+            if p.get("type") == "section"
+        }
+        output_sections = {
+            p["name"].lower(): p["name"]
+            for p in (mod.get("outputs") or [])
+            if p.get("type") == "section"
+        }
+
+        # Actual inputs (READ-OK) and defaults (READ-DEFAULT) for declared input sections.
+        actual_inputs   = []
+        actual_defaults = []
+        for sec_lc, sec_display in input_sections.items():
+            ok_items  = []
+            def_items = []
+            for (s_lc, _n_lc), info in reads.items():
+                if s_lc == sec_lc:
+                    item = {"name": info["name"], "type": info["data_type"]}
+                    if info["access_type"] == "read-ok":
+                        ok_items.append(item)
+                    else:
+                        def_items.append(item)
+            if ok_items:
+                actual_inputs.append({
+                    "name": sec_display, "type": "section", "items": ok_items,
+                })
+            if def_items:
+                actual_defaults.append({
+                    "name": sec_display, "type": "section", "items": def_items,
+                })
+
+        # Actual outputs (WRITE-OK / REPLACE-OK) for declared output sections.
+        actual_outputs = []
+        for sec_lc, sec_display in output_sections.items():
+            items = []
+            for (s_lc, _n_lc), info in writes.items():
+                if s_lc == sec_lc:
+                    items.append({"name": info["name"], "type": info["data_type"]})
+            if items:
+                actual_outputs.append({
+                    "name": sec_display, "type": "section", "items": items,
+                })
+
+        result.append({
+            "ini_section":     ini_section,
+            "actual_inputs":   actual_inputs,
+            "actual_defaults": actual_defaults,
+            "actual_outputs":  actual_outputs,
+        })
+
+    return result
 
 
 def _parse_module_output(combined, module_names):

@@ -146,6 +146,14 @@ document.addEventListener("DOMContentLoaded", () => {
             modulePrepOutput.set(entry.ini_section, entry.output || "");
           }
         }
+        // Clear any stale actual I/O from a previous run.
+        for (const mod of pipeline.modules) {
+          delete mod.runStatus;
+          delete mod.actualInputs;
+          delete mod.actualDefaults;
+          delete mod.actualOutputs;
+        }
+        pipeline._render();
         setPipelineStatus("Pipeline ready.", "ok");
         runLikelihoodBtn.disabled = false;
         // Refresh right sidebar if a module is selected.
@@ -171,8 +179,29 @@ document.addEventListener("DOMContentLoaded", () => {
         setPipelineStatus(res.error, "error");
         runLikelihoodBtn.disabled = false;
       } else {
+        // Stamp every module with run-ok state.
+        for (const mod of pipeline.modules) {
+          mod.runStatus = "ok";
+        }
+
+        // Store per-module actual I/O and push it onto the live module objects.
+        for (const entry of (res.result.modules || [])) {
+          if (!entry.ini_section) continue;
+          const mod = pipeline.modules.find(m => m.ini_section === entry.ini_section);
+          if (mod) {
+            mod.actualInputs   = entry.actual_inputs   || [];
+            mod.actualDefaults = entry.actual_defaults || [];
+            mod.actualOutputs  = entry.actual_outputs  || [];
+          }
+        }
+
+        pipeline._render();
         setPipelineStatus("Likelihood run complete.", "ok");
         runLikelihoodBtn.disabled = false;
+
+        // Refresh right sidebar if a module is currently selected.
+        const sel = pipeline.getSelectedModule();
+        if (sel && currentInstanceId === sel.instanceId) showDetails(sel);
       }
     } catch (err) {
       setPipelineStatus("Error: " + err.message, "error");
@@ -284,8 +313,17 @@ document.addEventListener("DOMContentLoaded", () => {
       wrap.appendChild(p);
     }
 
-    _appendPortSection(wrap, mod, "input",  mod.inputs  || []);
-    _appendPortSection(wrap, mod, "output", mod.outputs || []);
+    // After a successful run, show actual I/O from the DataBlock.
+    // Otherwise fall back to the YAML-declared inputs/outputs.
+    const hasActual = mod.actualInputs || mod.actualDefaults || mod.actualOutputs;
+    if (hasActual) {
+      _appendStaticPortSection(wrap, "input",         mod.actualInputs   || [], "Actual Inputs");
+      _appendStaticPortSection(wrap, "input-default", mod.actualDefaults || [], "Default Inputs");
+      _appendStaticPortSection(wrap, "output",        mod.actualOutputs  || [], "Actual Outputs");
+    } else {
+      _appendPortSection(wrap, mod, "input",  mod.inputs  || []);
+      _appendPortSection(wrap, mod, "output", mod.outputs || []);
+    }
 
     const params = mod.params || [];
     if (params.length) wrap.appendChild(_buildParamsForm(mod));
@@ -299,6 +337,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     return wrap;
   }
+  }
 
   function _buildSetupOutputSection(outputText) {
     const section = document.createElement("div");
@@ -311,6 +350,62 @@ document.addEventListener("DOMContentLoaded", () => {
     pre.textContent = outputText;
     section.appendChild(pre);
     return section;
+  }
+
+  /**
+   * Render a static (non-interactive) port section for actual I/O.
+   *
+   * Unlike _appendPortSection, this function does not link to the pipeline
+   * canvas expand/collapse state — items are always shown inline.
+   *
+   * @param {HTMLElement} wrap        - Parent element to append into.
+   * @param {string}      displayClass - CSS class for port rows ("input",
+   *                                    "input-default", "output", …).
+   * @param {Array}       ports       - Array of port objects from the backend.
+   * @param {string}      label       - Section heading text.
+   */
+  function _appendStaticPortSection(wrap, displayClass, ports, label) {
+    if (!ports.length) return;
+    const section = document.createElement("div");
+    section.className = "detail-section";
+    const h3 = document.createElement("h3");
+    h3.textContent = `${label} (${ports.length})`;
+    section.appendChild(h3);
+
+    ports.forEach(port => {
+      const row = document.createElement("div");
+      row.className = `port-detail ${displayClass}`;
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "port-name";
+      nameSpan.textContent = port.name;
+      row.appendChild(nameSpan);
+
+      if (port.type) {
+        const typeSpan = document.createElement("span");
+        typeSpan.className = "port-type";
+        typeSpan.textContent = port.type;
+        row.appendChild(typeSpan);
+      }
+      section.appendChild(row);
+
+      // Always show items inline (no expand/collapse for actual I/O).
+      const items = port.type === "section" ? (port.items || []) : [];
+      if (items.length) {
+        const subWrap = document.createElement("div");
+        subWrap.className = "sub-params-list";
+        items.forEach(item => {
+          const sub = document.createElement("div");
+          sub.className = `sub-param-row ${displayClass}`;
+          sub.innerHTML = `<span class="sub-param-name">${escHtml(item.name)}</span>` +
+                          (item.type ? `<span class="port-type">${escHtml(item.type)}</span>` : "");
+          subWrap.appendChild(sub);
+        });
+        section.appendChild(subWrap);
+      }
+    });
+
+    wrap.appendChild(section);
   }
 
   function _appendPortSection(wrap, mod, portType, ports) {
