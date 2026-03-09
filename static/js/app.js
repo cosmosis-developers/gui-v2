@@ -3,7 +3,7 @@
  *
  * Handles:
  *   - Tab switching
- *   - Socket.IO (receives available modules & initial pipeline)
+ *   - IPC calls to the Python worker (replaces the previous Socket.IO layer)
  *   - Left sidebar: module library, "Open Library" directory picker
  *   - Right sidebar: module details with expandable sections and params form
  */
@@ -26,13 +26,34 @@ document.addEventListener("DOMContentLoaded", () => {
   // ── Pipeline canvas ──────────────────────────────────────────
   const pipeline = new PipelineCanvas("pipeline-canvas-container");
 
-  // ── Socket.IO ────────────────────────────────────────────────
-  const socket = io();
-  socket.on("connect", () => console.log("[socket] connected:", socket.id));
-  socket.on("available_modules", modules => { renderModuleLibrary(modules); setScanStatus("", false); });
-  socket.on("pipeline_update",   modules => { pipeline.setModules(modules); setScanStatus("", false); });
-  socket.on("scan_error",        data    => setScanStatus("Error: " + (data.message || "unknown error"), true));
-  socket.on("pipeline_load_error", data  => setScanStatus("Pipeline load error: " + (data.message || "unknown"), true));
+  // ── Python worker bridge ─────────────────────────────────────
+  // All Python calls go through window.electronAPI.call(method, params)
+  // which returns Promise<{ result, error }> via Electron IPC.
+
+  async function pyCall(method, params = {}) {
+    if (!window.electronAPI?.call) {
+      throw new Error("Python worker not available (running outside Electron).");
+    }
+    return window.electronAPI.call(method, params);
+  }
+
+  // ── Load initial data ─────────────────────────────────────────
+  async function loadInitialData() {
+    try {
+      const [modRes, pipRes] = await Promise.all([
+        pyCall("get_modules",  {}),
+        pyCall("get_pipeline", {}),
+      ]);
+      if (modRes.error)  console.error("[get_modules]",  modRes.error);
+      else               renderModuleLibrary(modRes.result);
+      if (pipRes.error)  console.error("[get_pipeline]", pipRes.error);
+      else               pipeline.setModules(pipRes.result);
+    } catch (err) {
+      console.warn("Initial data load skipped:", err.message);
+    }
+  }
+
+  loadInitialData();
 
   // ── Open Library button ───────────────────────────────────────
   const openLibraryBtn = document.getElementById("open-library-btn");
@@ -53,8 +74,15 @@ document.addEventListener("DOMContentLoaded", () => {
       if (dir === null || dir.trim() === "") return;
       dir = dir.trim();
     }
+
     setScanStatus("Scanning\u2026", false);
-    socket.emit("scan_library_dir", { path: dir });
+    try {
+      const res = await pyCall("scan_library_dir", { path: dir });
+      if (res.error) setScanStatus("Error: " + res.error, true);
+      else { renderModuleLibrary(res.result); setScanStatus("", false); }
+    } catch (err) {
+      setScanStatus("Error: " + err.message, true);
+    }
   });
 
   // ── Open Pipeline button ──────────────────────────────────────
@@ -75,8 +103,15 @@ document.addEventListener("DOMContentLoaded", () => {
       if (iniPath === null || iniPath.trim() === "") return;
       iniPath = iniPath.trim();
     }
+
     setScanStatus("Loading pipeline\u2026", false);
-    socket.emit("load_pipeline_ini", { path: iniPath });
+    try {
+      const res = await pyCall("load_pipeline_ini", { path: iniPath });
+      if (res.error) setScanStatus("Pipeline load error: " + res.error, true);
+      else { pipeline.setModules(res.result); setScanStatus("", false); }
+    } catch (err) {
+      setScanStatus("Pipeline load error: " + err.message, true);
+    }
   });
 
   function setScanStatus(msg, isError) {

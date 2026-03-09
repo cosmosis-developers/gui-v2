@@ -1,7 +1,32 @@
 # CosmoSIS GUI v2
 
 A graphical pipeline editor for [CosmoSIS](https://cosmosis.readthedocs.io/).
-Built with **Electron** (frontend shell) and **Python / Flask-SocketIO** (backend).
+Built with **Electron** (frontend shell) and **Python** (backend logic via stdin/stdout IPC).
+
+---
+
+## Architecture
+
+The GUI uses a clean Electron-native architecture — no HTTP server required:
+
+```
+Electron main process
+  ├─ loads templates/index.html  via loadFile()  (file:// — no port)
+  ├─ spawns worker.py as a child process
+  └─ bridges IPC calls:  renderer ↔ ipcMain ↔ worker.py stdin/stdout
+```
+
+All Python I/O (scanning module libraries, parsing pipeline INI files) is
+handled by `worker.py` — a simple JSON-RPC worker that reads requests from
+stdin and writes responses to stdout.  This replaces the previous
+Flask/Socket.IO HTTP server approach, which had several drawbacks:
+
+| | Old (Flask) | New (IPC) |
+|-|-------------|-----------|
+| Port conflicts | Yes (macOS blocked 5000) | None |
+| Startup delay | 200 ms polling loop | Instant |
+| Extra Python deps | Flask, flask-socketio, flask-cors, simple-websocket | None |
+| Security surface | localhost HTTP socket | Subprocess pipe only |
 
 ---
 
@@ -35,33 +60,19 @@ npm install
 npm start
 ```
 
-This will:
-1. Spawn the Python Flask/Socket.IO backend on `http://localhost:8080`.
-2. Open the Electron window once the backend is ready.
+Electron will spawn `worker.py` as a subprocess and open the window immediately.
 
 ---
 
 ## Usage
 
 * **Open Library** — click the button in the left sidebar and choose the root
-  of a CosmoSIS standard library directory.  The Python backend recursively
+  of a CosmoSIS standard library directory.  The Python worker recursively
   scans for `module.yaml` files and populates the module library panel.
 
 * **Open Pipeline** — click the button and choose a CosmoSIS `.ini` pipeline
-  file.  The backend parses it with `Inifile`, resolves each module against
+  file.  The worker parses it with `Inifile`, resolves each module against
   the scanned library, and populates the pipeline canvas.
 
 * **Drag modules** from the library panel onto the canvas to build a custom
   pipeline.
-
----
-
-## Development
-
-For quicker iteration you can also run the Flask backend directly and open the
-page in a regular browser (file-system dialogs will fall back to `prompt()`):
-
-```bash
-python app.py
-# then open http://localhost:8080
-```
