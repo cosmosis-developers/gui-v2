@@ -24,6 +24,7 @@ import io
 import json
 import os
 import sys
+import threading
 from contextlib import redirect_stderr, redirect_stdout
 
 from inifile import Inifile
@@ -195,20 +196,24 @@ class Backend:
             self._inifile.add_section("runtime")
         self._inifile.set("runtime", "verbosity", "noisy")
 
-        out_buf = io.StringIO()
-        err_buf = io.StringIO()
-
+        # Capture *all* output at the OS file-descriptor level so that writes
+        # from CosmoSIS C extensions (which bypass Python's redirect_stdout)
+        # are also included.  Both stdout (fd 1) and stderr (fd 2) feed into
+        # the same pipe so their lines remain interleaved in arrival order.
+        cap   = _FdCapture([1, 2])
+        error = None
         try:
-            with redirect_stdout(out_buf), redirect_stderr(err_buf):
-                self._pipeline = LikelihoodPipeline(self._inifile)
+            self._pipeline = LikelihoodPipeline(self._inifile)
         except Exception as exc:
-            captured = out_buf.getvalue() + err_buf.getvalue()
-            raise RuntimeError(
-                f"Pipeline setup failed: {exc}"
-                + (f"\n\n--- Captured output ---\n{captured}" if captured else "")
-            ) from exc
+            error = exc
+        finally:
+            captured = cap.finish()
 
-        captured     = out_buf.getvalue() + err_buf.getvalue()
+        if error is not None:
+            raise RuntimeError(
+                f"Pipeline setup failed: {error}"
+                + (f"\n\n--- Captured output ---\n{captured}" if captured else "")
+            )
         module_names = self._pipeline_module_names()
         per_module   = _parse_module_output(captured, module_names)
 
@@ -370,6 +375,100 @@ def _ini_section_items(ini, section):
         return [(k, ini.get(section, k)) for k in section_keys]
     except Exception:
         return []
+
+
+class _FdCapture:
+    """Capture all writes to a set of OS file descriptors via a pipe.
+
+    Works for *both* Python-level writes (via ``sys.stdout`` / ``sys.stderr``)
+    and direct C-extension writes to the underlying file descriptor — the
+    latter are the ones that bypass Python's ``redirect_stdout`` context
+    manager.
+
+    Usage::
+
+        cap = _FdCapture([1, 2])     # start capturing fd 1 + fd 2
+        try:
+            do_something_that_produces_output()
+        finally:
+            text = cap.finish()      # restore fds, return captured text
+    """
+
+    def __init__(self, fds):
+        self._fds = list(fds)
+
+        # Flush Python wrappers before redirecting so no buffered data leaks
+        # into the capture pipe from a previous call.
+        _ipc_stdout.flush()
+        try:
+            sys.stderr.flush()
+        except Exception:
+            pass
+
+        # Save a copy of each fd so we can restore later.
+        self._saved = {fd: os.dup(fd) for fd in self._fds}
+
+        # All captured fds write into the *same* pipe so output is interleaved
+        # in arrival order, just as a reader would see it.
+        r, w = os.pipe()
+        for fd in self._fds:
+            os.dup2(w, fd)
+        os.close(w)  # Only the dup'd fds keep the write end alive now.
+
+        self._chunks: list[bytes] = []
+        self._t = threading.Thread(target=self._drain, args=(r,), daemon=True)
+        self._t.start()
+
+    def _drain(self, r: int) -> None:
+        """Background reader: drains the pipe until all writers close it."""
+        while True:
+            try:
+                chunk = os.read(r, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            self._chunks.append(chunk)
+        try:
+            os.close(r)
+        except OSError:
+            pass
+
+    def finish(self) -> str:
+        """Restore original fds and return all text written during capture."""
+        # Flush Python-level wrappers one last time to drain any buffered data
+        # into the pipe before we close the write ends.
+        try:
+            _ipc_stdout.flush()
+        except Exception:
+            pass
+        try:
+            sys.stderr.flush()
+        except Exception:
+            pass
+
+        # Restore originals.  Each os.dup2 closes the redirected fd's handle
+        # to the write end of the pipe; the last one causes EOF in the drain
+        # thread.
+        for fd in self._fds:
+            os.dup2(self._saved[fd], fd)
+            os.close(self._saved[fd])
+
+        self._t.join(timeout=10)
+        if self._t.is_alive():
+            # The drain thread is still running after the timeout.  This is
+            # unexpected but non-fatal: log a warning and continue with
+            # whatever data has been collected so far.
+            print(
+                "[worker] _FdCapture: drain thread did not finish within 10 s"
+                " — output may be incomplete.",
+                file=sys.stderr,
+            )
+
+        # Safe to read: _t.join() ensures the thread has finished (or we've
+        # already warned that it's still alive, in which case the GIL protects
+        # the list read against concurrent appends).
+        return b"".join(self._chunks).decode("utf-8", errors="replace")
 
 
 def _parse_module_output(combined, module_names):
