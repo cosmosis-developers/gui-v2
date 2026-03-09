@@ -55,6 +55,10 @@ def handle_scan_library_dir(params):
 
     modules = scan_directory(directory)
 
+    # Change the current working directory to the library directory, so that any
+    # relative paths in the ini files we will load later are resolved correctly.
+    os.chdir(directory)
+
     _library_directory    = directory
     _modules_by_yaml_path = {m["_source"]: m for m in modules if m.get("_source")}
 
