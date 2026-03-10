@@ -565,7 +565,7 @@ def _normalize_dtype(value):
         ndim = f"{value.ndim}D"
         if dt == 'int':
             return f"int {ndim}"
-        elif dt in [np.int32, np.int64, np.int128]:
+        elif dt in [np.int32, np.int64]:
             return f"int {ndim}"
         elif dt == 'float':
             return f"real {ndim}"
