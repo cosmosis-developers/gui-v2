@@ -25,6 +25,11 @@ const { spawn } = require("child_process");
 let pythonWorker = null;
 let mainWindow   = null;
 
+// ── App directory (script location, not launch CWD) ───────────────────────
+const appDir = app.isPackaged
+  ? path.join(process.resourcesPath, "app")
+  : path.join(__dirname);
+
 // ── In-flight JSON-RPC calls ───────────────────────────────────────────────
 // Maps request id → { resolve, reject }
 const _pending = new Map();
@@ -32,10 +37,6 @@ let   _nextId  = 1;
 
 // ── Start the Python worker ────────────────────────────────────────────────
 function startWorker() {
-  const appDir = app.isPackaged
-    ? path.join(process.resourcesPath, "app")
-    : path.join(__dirname);
-
   const pythonExe = process.platform === "win32" ? "python" : "python3";
 
   pythonWorker = spawn(
@@ -129,6 +130,14 @@ ipcMain.handle("dialog:openIniFile", async () => {
     properties: ["openFile"],
   });
   return result.canceled ? null : result.filePaths[0];
+});
+
+// ── IPC: startup auto-scan ────────────────────────────────────────────────
+// If npm was launched from a directory different to the script directory,
+// return that directory so the renderer can auto-scan it for modules.
+ipcMain.handle("app:getStartupScanDir", () => {
+  const launchDir = process.cwd();
+  return path.resolve(launchDir) !== path.resolve(appDir) ? launchDir : null;
 });
 
 // ── IPC: Python calls ─────────────────────────────────────────────────────

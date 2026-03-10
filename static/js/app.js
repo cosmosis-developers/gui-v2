@@ -54,6 +54,22 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       console.warn("Initial data load skipped:", err.message);
     }
+
+    // Auto-scan: if the app was launched from a directory that is different
+    // from the script directory, scan that launch directory for modules.
+    try {
+      const scanDir = window.electronAPI?.getStartupScanDir
+        ? await window.electronAPI.getStartupScanDir()
+        : null;
+      if (scanDir) {
+        setScanStatus(`Auto-scanning ${scanDir}\u2026`, false);
+        const res = await pyCall("scan_library_dir", { path: scanDir });
+        if (res.error) setScanStatus("Auto-scan error: " + res.error, true);
+        else { renderModuleLibrary(res.result); setScanStatus("", false); }
+      }
+    } catch (err) {
+      console.warn("Startup auto-scan skipped:", err.message);
+    }
   }
 
   loadInitialData();
@@ -128,18 +144,21 @@ document.addEventListener("DOMContentLoaded", () => {
   const preparePipelineBtn = document.getElementById("prepare-pipeline-btn");
   const runLikelihoodBtn   = document.getElementById("run-likelihood-btn");
   const pipelineStatusEl   = document.getElementById("pipeline-status");
+  const pipelineActionsEl  = document.querySelector(".pipeline-actions");
 
   preparePipelineBtn.addEventListener("click", async () => {
-    setPipelineStatus("Preparing pipeline\u2026", "");
+    setPipelineStatus("Setting up pipeline\u2026", "setup");
     preparePipelineBtn.disabled = true;
     runLikelihoodBtn.disabled   = true;
+    pipelineActionsEl.classList.remove("pipeline-ready");
 
     try {
       const res = await pyCall("prepare_pipeline", {});
       if (res.error) {
         setPipelineStatus(res.error, "error");
+        pipelineActionsEl.classList.remove("pipeline-ready");
       } else {
-        // Store per-module output.
+        // Store per-module output (clear stale entries first).
         modulePrepOutput.clear();
         for (const entry of (res.result.modules || [])) {
           if (entry.ini_section) {
@@ -154,14 +173,16 @@ document.addEventListener("DOMContentLoaded", () => {
           delete mod.actualOutputs;
         }
         pipeline._render();
-        setPipelineStatus("Pipeline ready.", "ok");
+        setPipelineStatus("Pipeline ready \u2014 click \u25b6 Run Likelihood.", "ok");
         runLikelihoodBtn.disabled = false;
+        pipelineActionsEl.classList.add("pipeline-ready");
         // Refresh right sidebar if a module is selected.
         const sel = pipeline.getSelectedModule();
         if (sel && currentInstanceId === sel.instanceId) showDetails(sel);
       }
     } catch (err) {
       setPipelineStatus("Error: " + err.message, "error");
+      pipelineActionsEl.classList.remove("pipeline-ready");
     } finally {
       preparePipelineBtn.disabled = false;
     }
@@ -170,7 +191,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ── Run Likelihood button ─────────────────────────────────────
   // (stays disabled until prepare_pipeline succeeds)
   runLikelihoodBtn.addEventListener("click", async () => {
-    setPipelineStatus("Running likelihood\u2026", "");
+    setPipelineStatus("Running likelihood\u2026", "run");
     runLikelihoodBtn.disabled = true;
 
     try {
@@ -199,6 +220,9 @@ document.addEventListener("DOMContentLoaded", () => {
         setPipelineStatus("Likelihood run complete.", "ok");
         runLikelihoodBtn.disabled = false;
 
+        // Populate the Results tab with DataBlock contents.
+        renderResultsTab(res.result.block_contents || []);
+
         // Refresh right sidebar if a module is currently selected.
         const sel = pipeline.getSelectedModule();
         if (sel && currentInstanceId === sel.instanceId) showDetails(sel);
@@ -209,12 +233,123 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // ── Results tab ───────────────────────────────────────────────
+  const resultsPlaceholder = document.getElementById("results-placeholder");
+  const resultsTree        = document.getElementById("results-tree");
+  const resultsDetail      = document.getElementById("results-detail");
+  const resultsDetailTitle = document.getElementById("results-detail-title");
+  const resultsDetailBody  = document.getElementById("results-detail-body");
+  const resultsDetailClose = document.getElementById("results-detail-close");
+
+  resultsDetailClose.addEventListener("click", () => {
+    resultsDetail.classList.add("hidden");
+  });
+
+  /**
+   * Populate the Results tab with the DataBlock contents returned by
+   * run_likelihood.  Each section is rendered as a collapsible group;
+   * clicking a value row shows its full content in the detail pane.
+   *
+   * @param {Array} sections  Array of {name, values} from worker.py.
+   */
+  function renderResultsTab(sections) {
+    resultsTree.innerHTML = "";
+
+    if (!sections.length) {
+      resultsPlaceholder.classList.remove("hidden");
+      resultsTree.classList.add("hidden");
+      resultsDetail.classList.add("hidden");
+      return;
+    }
+
+    resultsPlaceholder.classList.add("hidden");
+    resultsTree.classList.remove("hidden");
+
+    sections.forEach(sec => {
+      const group   = document.createElement("div");
+      group.className = "results-section";
+
+      const header  = document.createElement("button");
+      header.type   = "button";
+      header.className = "results-section-header";
+      header.innerHTML =
+        `<span class="results-chevron"></span>` +
+        `<span class="results-section-name">${escHtml(sec.name)}</span>` +
+        `<span class="results-section-count">${sec.values.length}</span>`;
+
+      const body    = document.createElement("div");
+      body.className = "results-section-body";
+      body.style.display = "none";
+
+      header.addEventListener("click", () => {
+        const open = header.classList.toggle("expanded");
+        body.style.display = open ? "" : "none";
+      });
+
+      (sec.values || []).forEach(val => {
+        const row = document.createElement("div");
+        row.className = "results-value-row";
+
+        const nameSpan  = document.createElement("span");
+        nameSpan.className = "results-value-name";
+        nameSpan.textContent = val.name;
+
+        const typeSpan  = document.createElement("span");
+        typeSpan.className = "results-value-type";
+        typeSpan.textContent = val.dtype + (val.shape ? ` [${val.shape}]` : "");
+
+        const valueSpan = document.createElement("span");
+        valueSpan.className = "results-value-scalar";
+        if (val.scalar !== null && val.scalar !== undefined) {
+          valueSpan.textContent = val.scalar;
+        } else if (val.preview) {
+          const more = val.n_elements > val.preview.length;
+          valueSpan.textContent = "[" + val.preview.join(", ") + (more ? ", …" : "") + "]";
+        }
+
+        row.appendChild(nameSpan);
+        row.appendChild(typeSpan);
+        row.appendChild(valueSpan);
+
+        // Clicking a value row opens the detail pane.
+        row.addEventListener("click", () => {
+          resultsDetailTitle.textContent = `${sec.name} / ${val.name}`;
+          let content = `section: ${sec.name}\nname:    ${val.name}\ntype:    ${val.dtype}`;
+          if (val.shape) content += `\nshape:   ${val.shape}  (${val.n_elements} elements)`;
+          if (val.scalar !== null && val.scalar !== undefined) {
+            content += `\nvalue:   ${val.scalar}`;
+          } else if (val.preview) {
+            const more = val.n_elements > val.preview.length;
+            content += `\npreview: [${val.preview.join(", ")}${more ? ", …" : ""}]`;
+            if (more) content += `\n(first ${val.preview.length} of ${val.n_elements} elements)`;
+          }
+          resultsDetailBody.textContent = content;
+          resultsDetail.classList.remove("hidden");
+          document.querySelectorAll(".results-value-row.selected")
+            .forEach(r => r.classList.remove("selected"));
+          row.classList.add("selected");
+        });
+
+        body.appendChild(row);
+      });
+
+      group.appendChild(header);
+      group.appendChild(body);
+      resultsTree.appendChild(group);
+    });
+  }
+
   function setPipelineStatus(msg, kind) {
-    pipelineStatusEl.textContent = msg;
-    pipelineStatusEl.className   = "pipeline-status";
+    const spinner = pipelineStatusEl.querySelector(".pipeline-status-spinner");
+    const textEl  = document.getElementById("pipeline-status-text");
+    pipelineStatusEl.className = "pipeline-status";
     if (!msg) { pipelineStatusEl.classList.add("hidden"); return; }
-    if (kind === "error") pipelineStatusEl.classList.add("pipeline-status-error");
-    if (kind === "ok")    pipelineStatusEl.classList.add("pipeline-status-ok");
+    if (textEl) textEl.textContent = msg;
+    if (kind === "error")       pipelineStatusEl.classList.add("pipeline-status-error");
+    else if (kind === "ok")     pipelineStatusEl.classList.add("pipeline-status-ok");
+    else if (kind === "setup")  pipelineStatusEl.classList.add("pipeline-status-setup");
+    else if (kind === "run")    pipelineStatusEl.classList.add("pipeline-status-run");
+    if (spinner) spinner.classList.toggle("hidden", kind !== "setup" && kind !== "run");
   }
 
   // ── Left sidebar: module library ─────────────────────────────

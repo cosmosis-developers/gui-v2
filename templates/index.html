@@ -38,7 +38,10 @@
               title="Run one likelihood evaluation using the prepared pipeline">
               &#9654; Run Likelihood
             </button>
-            <div id="pipeline-status" class="pipeline-status hidden"></div>
+            <div id="pipeline-status" class="pipeline-status hidden">
+              <span class="pipeline-status-spinner hidden"></span>
+              <span id="pipeline-status-text"></span>
+            </div>
           </div>
 
           <!-- Module library -->
@@ -67,9 +70,21 @@
       </div>
     </div>
 
-    <!-- ── Placeholder tabs ──────────────────────────────────────── -->
-    <div id="tab-results"  class="tab-content" role="tabpanel">
-      <div class="tab-placeholder">Results — coming soon</div>
+    <!-- ── Results tab ─────────────────────────────────────────── -->
+    <div id="tab-results" class="tab-content" role="tabpanel">
+      <div class="results-layout">
+        <div id="results-placeholder" class="results-placeholder">
+          Run a likelihood evaluation on the Pipeline tab to explore the DataBlock here.
+        </div>
+        <div id="results-tree" class="results-tree hidden"></div>
+        <div id="results-detail" class="results-detail hidden">
+          <div class="results-detail-bar">
+            <span id="results-detail-title" class="results-detail-title"></span>
+            <button id="results-detail-close" class="sidebar-close" title="Close">&#x2715;</button>
+          </div>
+          <pre id="results-detail-body" class="results-detail-body"></pre>
+        </div>
+      </div>
     </div>
     <div id="tab-sampling" class="tab-content" role="tabpanel">
       <div class="tab-placeholder">Sampling — coming soon</div>

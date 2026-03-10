@@ -31,4 +31,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
    * @returns {Promise<{result: any, error: string|null}>}
    */
   call: (method, params) => ipcRenderer.invoke("python:call", { method, params }),
+
+  /**
+   * Returns the directory from which the app was launched (process.cwd()),
+   * or null if it is the same as the application directory.  Used for
+   * auto-scanning a CosmoSIS standard library on startup.
+   * @returns {Promise<string|null>}
+   */
+  getStartupScanDir: () => ipcRenderer.invoke("app:getStartupScanDir"),
 });

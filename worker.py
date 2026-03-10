@@ -265,12 +265,13 @@ class Backend:
 
         block      = getattr(self._results, "block", None)
         per_module = _extract_actual_module_io(block, self._pipeline_modules)
+        block_contents = _serialize_block(block)
 
         print(
             f"[worker] run_likelihood: {len(per_module)} modules with actual I/O.",
             file=sys.stderr,
         )
-        return {"ok": True, "modules": per_module}
+        return {"ok": True, "modules": per_module, "block_contents": block_contents}
 
     # ── Internal helpers ───────────────────────────────────────────────────
 
@@ -487,6 +488,62 @@ class _FdCapture:
         # already warned that it's still alive, in which case the GIL protects
         # the list read against concurrent appends).
         return b"".join(self._chunks).decode("utf-8", errors="replace")
+
+
+def _serialize_block(block):
+    """Serialize all sections and values from a CosmoSIS DataBlock.
+
+    Returns a list of section dicts::
+
+        [{"name": str,
+          "values": [{"name": str, "dtype": str, "shape": str|None,
+                       "scalar": str|None}]}]
+
+    Scalar values are stringified for direct display.
+    Array values carry a ``shape`` field; a short preview of up to 6 elements
+    is included as ``preview`` (a list of strings).
+    """
+    if block is None:
+        return []
+
+    # Retrieve section and key listings robustly.
+    try:
+        section_names = list(block.sections())
+    except Exception:
+        return []
+
+    result = []
+    for sec in section_names:
+        try:
+            keys = list(block.keys(sec))
+        except Exception:
+            keys = []
+
+        values = []
+        for key in keys:
+            try:
+                val = block[sec, key]
+            except Exception:
+                continue
+            entry = {"name": key, "dtype": _normalize_dtype(val), "shape": None,
+                     "scalar": None, "preview": None}
+            if isinstance(val, np.ndarray):
+                entry["shape"] = "×".join(str(d) for d in val.shape)
+                flat = val.flat
+                preview = []
+                for _i, x in enumerate(flat):
+                    if _i >= 6:
+                        break
+                    preview.append(str(x))
+                entry["preview"] = preview
+                entry["n_elements"] = int(val.size)
+            else:
+                entry["scalar"] = str(val)
+            values.append(entry)
+
+        result.append({"name": sec, "values": values})
+
+    return result
 
 
 def _normalize_dtype(value):
