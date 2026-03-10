@@ -25,6 +25,8 @@ import os
 import sys
 import threading
 
+import numpy as np
+
 from inifile import Inifile
 from module_library import parse_module_yaml, scan_directory
 from modules import SAMPLER_MODULE, get_available_modules, get_initial_pipeline
@@ -487,26 +489,37 @@ class _FdCapture:
         return b"".join(self._chunks).decode("utf-8", errors="replace")
 
 
-def _normalize_dtype(data_type):
+def _normalize_dtype(value):
     """Convert a DataBlock data_type (possibly a Python type object) to a display string."""
-    if data_type is None:
+    if value is None:
         return ""
-    s = str(data_type)
-    # "<class 'numpy.ndarray'>" → "ndarray" → "array"
-    if s.startswith("<class '") and s.endswith("'>"):
-        s = s[8:-2]
-    # "numpy.float64" → "float64"
-    dot = s.rfind(".")
-    if dot >= 0:
-        s = s[dot + 1:]
-    s = s.lower()
-    if "ndarray" in s or s == "array":
-        return "array"
-    if s in ("float64", "float32", "float_", "float"):
-        return "real"
-    if s in ("int64", "int32", "int_", "int"):
+    if isinstance(value, int):
         return "int"
-    return s or ""
+    elif isinstance(value, float):
+        return "real"
+    elif isinstance(value, str):
+        return "str"
+    elif isinstance(value, bool):
+        return "bool"
+    elif isinstance(value, complex):
+        return "complex"
+    elif isinstance(value, np.ndarray):
+        dt = value.dtype
+        ndim = f"{value.ndim}D"
+        if dt == 'int':
+            return f"int {ndim}"
+        elif dt == 'real':
+            return f"real {ndim}"
+        elif dt == 'complex':
+            return f"complex {ndim}"
+        elif dt == 'bool':
+            return f"bool {ndim}"
+        elif dt == 'str':
+            return f"str {ndim}"
+        else:
+            return f"???? {ndim}"
+    else:
+        return "????"
 
 
 def _extract_actual_module_io(block, pipeline_modules):
@@ -552,7 +565,11 @@ def _extract_actual_module_io(block, pipeline_modules):
         access_type = str(entry[0]).lower() if entry[0] is not None else ""
         section     = str(entry[1])         if entry[1] is not None else ""
         name        = str(entry[2])         if entry[2] is not None else ""
-        data_type   = _normalize_dtype(entry[3]) if len(entry) > 3 else ""
+        if len(entry) <= 3:
+            data_type = ""
+        elif block.has_value(section, name):
+            value = block[section, name]
+            data_type = _normalize_dtype(value)
 
         key = (section.lower(), name.lower())
 
