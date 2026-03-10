@@ -248,15 +248,17 @@ class PipelineCanvas {
   }
 
   _appendConnections() {
-    const cx  = this._modX() + this._maxModWidth() / 2;
+    const mx  = this._modX();
     const { MH } = PipelineCanvas;
     for (let i = 0; i < this.modules.length - 1; i++) {
+      const cx1 = mx + this._moduleBoxWidth(this.modules[i].name)     / 2;
+      const cx2 = mx + this._moduleBoxWidth(this.modules[i + 1].name) / 2;
       const y1 = this._modY(i) + MH;
       const y2 = this._modY(i + 1) - 6;
       const el = this._el("line");
-      el.setAttribute("x1",          cx);
+      el.setAttribute("x1",          cx1);
       el.setAttribute("y1",          y1);
-      el.setAttribute("x2",          cx);
+      el.setAttribute("x2",          cx2);
       el.setAttribute("y2",          y2);
       el.setAttribute("stroke",       "#94a3b8");
       el.setAttribute("stroke-width", "2");

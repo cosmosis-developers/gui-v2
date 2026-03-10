@@ -236,48 +236,146 @@ document.addEventListener("DOMContentLoaded", () => {
   // ── Results tab ───────────────────────────────────────────────
   const resultsPlaceholder = document.getElementById("results-placeholder");
   const resultsTree        = document.getElementById("results-tree");
-  const resultsDetail      = document.getElementById("results-detail");
-  const resultsDetailTitle = document.getElementById("results-detail-title");
-  const resultsDetailBody  = document.getElementById("results-detail-body");
-  const resultsDetailClose = document.getElementById("results-detail-close");
+  const resultsPlotDiv     = document.getElementById("results-plot-div");
+  const resultsPlotInfo    = document.getElementById("results-plot-info");
+  const resultsLogXBtn     = document.getElementById("results-log-x");
+  const resultsLogYBtn     = document.getElementById("results-log-y");
 
-  resultsDetailClose.addEventListener("click", () => {
-    resultsDetail.classList.add("hidden");
+  // Plot state
+  let plotYItem  = null;  // { secName, valName, plot_data }
+  let plotXItem  = null;  // { secName, valName, plot_data } or null (→ use index)
+  let plotLogX   = false;
+  let plotLogY   = false;
+  let resultsHasRun = false;
+
+  resultsLogXBtn.addEventListener("click", () => {
+    plotLogX = !plotLogX;
+    resultsLogXBtn.classList.toggle("active", plotLogX);
+    _updatePlot();
+  });
+
+  resultsLogYBtn.addEventListener("click", () => {
+    plotLogY = !plotLogY;
+    resultsLogYBtn.classList.toggle("active", plotLogY);
+    _updatePlot();
   });
 
   /**
+   * (Re-)render the Plotly chart with the current X/Y selections and
+   * log-scale settings.  Safe to call even when Plotly is not yet loaded.
+   */
+  function _updatePlot() {
+    if (typeof Plotly === "undefined") return;
+
+    if (!plotYItem || !plotYItem.plot_data) {
+      resultsPlotInfo.textContent = "Select a 1D array in the tree to plot";
+      Plotly.purge(resultsPlotDiv);
+      return;
+    }
+
+    const yData  = plotYItem.plot_data;
+    const xData  = (plotXItem && plotXItem.plot_data)
+      ? plotXItem.plot_data
+      : Array.from({ length: yData.length }, (_, i) => i);
+
+    const trace = {
+      x:    xData,
+      y:    yData,
+      mode: "lines",
+      type: "scatter",
+      name: plotYItem.valName,
+      line: { color: "#3b82f6", width: 1.5 },
+    };
+
+    const xTitle = plotXItem
+      ? `${plotXItem.secName} / ${plotXItem.valName}`
+      : "index";
+    const yTitle = `${plotYItem.secName} / ${plotYItem.valName}`;
+
+    const layout = {
+      margin:      { t: 28, r: 20, b: 60, l: 70 },
+      xaxis:       { title: { text: xTitle, font: { size: 11 } },
+                     type: plotLogX ? "log" : "linear" },
+      yaxis:       { title: { text: yTitle, font: { size: 11 } },
+                     type: plotLogY ? "log" : "linear" },
+      font:        { family: "inherit", size: 11 },
+      paper_bgcolor: "transparent",
+      plot_bgcolor:  "#f8fafc",
+      autosize:    true,
+    };
+
+    resultsPlotInfo.textContent =
+      `Y: ${yTitle}` + (plotXItem ? `  |  X: ${xTitle}` : "  |  X: index");
+
+    Plotly.react(resultsPlotDiv, [trace], layout, { responsive: true });
+  }
+
+  /**
+   * Update the visual selection state of all rows to match the current
+   * plotYItem / plotXItem.
+   */
+  function _refreshRowHighlights() {
+    document.querySelectorAll(".results-value-row").forEach(row => {
+      row.classList.remove("sel-y", "sel-x");
+    });
+    document.querySelectorAll(".results-axis-btn.btn-y").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".results-axis-btn.btn-x").forEach(b => b.classList.remove("active"));
+
+    if (plotYItem) {
+      const row = document.querySelector(
+        `.results-value-row[data-sec="${CSS.escape(plotYItem.secName)}"][data-key="${CSS.escape(plotYItem.valName)}"]`
+      );
+      if (row) {
+        row.classList.add("sel-y");
+        const btn = row.querySelector(".results-axis-btn.btn-y");
+        if (btn) btn.classList.add("active");
+      }
+    }
+    if (plotXItem) {
+      const row = document.querySelector(
+        `.results-value-row[data-sec="${CSS.escape(plotXItem.secName)}"][data-key="${CSS.escape(plotXItem.valName)}"]`
+      );
+      if (row) {
+        row.classList.add("sel-x");
+        const btn = row.querySelector(".results-axis-btn.btn-x");
+        if (btn) btn.classList.add("active");
+      }
+    }
+  }
+
+  /**
    * Populate the Results tab with the DataBlock contents returned by
-   * run_likelihood.  Each section is rendered as a collapsible group;
-   * clicking a value row shows its full content in the detail pane.
+   * run_likelihood.  Sections are rendered as collapsible groups.
+   * 1-D numeric arrays gain "Y" / "X" role buttons for Plotly.
    *
    * @param {Array} sections  Array of {name, values} from worker.py.
    */
   function renderResultsTab(sections) {
     resultsTree.innerHTML = "";
+    // After the first run, never show the pre-run placeholder again.
+    resultsHasRun = true;
+    resultsPlaceholder.classList.add("hidden");
 
     if (!sections.length) {
-      resultsPlaceholder.classList.remove("hidden");
       resultsTree.classList.add("hidden");
-      resultsDetail.classList.add("hidden");
       return;
     }
 
-    resultsPlaceholder.classList.add("hidden");
     resultsTree.classList.remove("hidden");
 
     sections.forEach(sec => {
-      const group   = document.createElement("div");
+      const group = document.createElement("div");
       group.className = "results-section";
 
-      const header  = document.createElement("button");
-      header.type   = "button";
+      const header = document.createElement("button");
+      header.type  = "button";
       header.className = "results-section-header";
       header.innerHTML =
         `<span class="results-chevron"></span>` +
         `<span class="results-section-name">${escHtml(sec.name)}</span>` +
         `<span class="results-section-count">${sec.values.length}</span>`;
 
-      const body    = document.createElement("div");
+      const body = document.createElement("div");
       body.className = "results-section-body";
       body.style.display = "none";
 
@@ -289,12 +387,73 @@ document.addEventListener("DOMContentLoaded", () => {
       (sec.values || []).forEach(val => {
         const row = document.createElement("div");
         row.className = "results-value-row";
+        // Store identity on the element so _refreshRowHighlights can find it.
+        row.dataset.sec = sec.name;
+        row.dataset.key = val.name;
 
-        const nameSpan  = document.createElement("span");
+        const isPlottable = Boolean(val.plot_data);
+
+        // Y-axis button (only for plottable rows)
+        if (isPlottable) {
+          const btnY = document.createElement("button");
+          btnY.type      = "button";
+          btnY.className = "results-axis-btn btn-y";
+          btnY.title     = "Plot as Y axis";
+          btnY.textContent = "Y";
+          btnY.addEventListener("click", e => {
+            e.stopPropagation();
+            if (plotYItem
+                && plotYItem.secName === sec.name
+                && plotYItem.valName === val.name) {
+              // Deselect Y
+              plotYItem = null;
+            } else {
+              plotYItem = { secName: sec.name, valName: val.name, plot_data: val.plot_data };
+              // If the same item was selected as X, clear X
+              if (plotXItem
+                  && plotXItem.secName === sec.name
+                  && plotXItem.valName === val.name) {
+                plotXItem = null;
+              }
+            }
+            _refreshRowHighlights();
+            _updatePlot();
+          });
+          row.appendChild(btnY);
+
+          // X-axis button
+          const btnX = document.createElement("button");
+          btnX.type      = "button";
+          btnX.className = "results-axis-btn btn-x";
+          btnX.title     = "Use as X axis";
+          btnX.textContent = "X";
+          btnX.addEventListener("click", e => {
+            e.stopPropagation();
+            if (plotXItem
+                && plotXItem.secName === sec.name
+                && plotXItem.valName === val.name) {
+              // Deselect X
+              plotXItem = null;
+            } else {
+              plotXItem = { secName: sec.name, valName: val.name, plot_data: val.plot_data };
+              // If the same item was selected as Y, clear Y
+              if (plotYItem
+                  && plotYItem.secName === sec.name
+                  && plotYItem.valName === val.name) {
+                plotYItem = null;
+              }
+            }
+            _refreshRowHighlights();
+            _updatePlot();
+          });
+          row.appendChild(btnX);
+        }
+
+        const nameSpan = document.createElement("span");
         nameSpan.className = "results-value-name";
         nameSpan.textContent = val.name;
 
-        const typeSpan  = document.createElement("span");
+        const typeSpan = document.createElement("span");
         typeSpan.className = "results-value-type";
         typeSpan.textContent = val.dtype + (val.shape ? ` [${val.shape}]` : "");
 
@@ -311,24 +470,26 @@ document.addEventListener("DOMContentLoaded", () => {
         row.appendChild(typeSpan);
         row.appendChild(valueSpan);
 
-        // Clicking a value row opens the detail pane.
-        row.addEventListener("click", () => {
-          resultsDetailTitle.textContent = `${sec.name} / ${val.name}`;
-          let content = `section: ${sec.name}\nname:    ${val.name}\ntype:    ${val.dtype}`;
-          if (val.shape) content += `\nshape:   ${val.shape}  (${val.n_elements} elements)`;
-          if (val.scalar !== null && val.scalar !== undefined) {
-            content += `\nvalue:   ${val.scalar}`;
-          } else if (val.preview) {
-            const more = val.n_elements > val.preview.length;
-            content += `\npreview: [${val.preview.join(", ")}${more ? ", …" : ""}]`;
-            if (more) content += `\n(first ${val.preview.length} of ${val.n_elements} elements)`;
-          }
-          resultsDetailBody.textContent = content;
-          resultsDetail.classList.remove("hidden");
-          document.querySelectorAll(".results-value-row.selected")
-            .forEach(r => r.classList.remove("selected"));
-          row.classList.add("selected");
-        });
+        // Clicking the row body selects it as Y (if plottable).
+        if (isPlottable) {
+          row.style.cursor = "pointer";
+          row.addEventListener("click", () => {
+            if (plotYItem
+                && plotYItem.secName === sec.name
+                && plotYItem.valName === val.name) {
+              plotYItem = null;
+            } else {
+              plotYItem = { secName: sec.name, valName: val.name, plot_data: val.plot_data };
+              if (plotXItem
+                  && plotXItem.secName === sec.name
+                  && plotXItem.valName === val.name) {
+                plotXItem = null;
+              }
+            }
+            _refreshRowHighlights();
+            _updatePlot();
+          });
+        }
 
         body.appendChild(row);
       });

@@ -527,7 +527,7 @@ def _serialize_block(block):
             except Exception:
                 continue
             entry = {"name": key, "dtype": _normalize_dtype(val), "shape": None,
-                     "scalar": None, "preview": None}
+                     "scalar": None, "preview": None, "plot_data": None}
             if isinstance(val, np.ndarray):
                 entry["shape"] = "×".join(str(d) for d in val.shape)
                 flat = val.flat
@@ -538,6 +538,15 @@ def _serialize_block(block):
                     preview.append(str(x))
                 entry["preview"] = preview
                 entry["n_elements"] = int(val.size)
+                # For 1-D numeric arrays (up to 50 000 elements) include the
+                # full data so the frontend can pass it straight to Plotly.
+                if (val.ndim == 1
+                        and np.issubdtype(val.dtype, np.number)
+                        and val.size <= 50_000):
+                    try:
+                        entry["plot_data"] = val.astype(float).tolist()
+                    except Exception:
+                        pass
             else:
                 entry["scalar"] = str(val)
             values.append(entry)

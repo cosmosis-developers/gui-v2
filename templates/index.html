@@ -73,17 +73,27 @@
     <!-- ── Results tab ─────────────────────────────────────────── -->
     <div id="tab-results" class="tab-content" role="tabpanel">
       <div class="results-layout">
-        <div id="results-placeholder" class="results-placeholder">
-          Run a likelihood evaluation on the Pipeline tab to explore the DataBlock here.
-        </div>
-        <div id="results-tree" class="results-tree hidden"></div>
-        <div id="results-detail" class="results-detail hidden">
-          <div class="results-detail-bar">
-            <span id="results-detail-title" class="results-detail-title"></span>
-            <button id="results-detail-close" class="sidebar-close" title="Close">&#x2715;</button>
+
+        <!-- Left panel: DataBlock section tree -->
+        <div class="results-left-panel">
+          <div id="results-placeholder" class="results-placeholder">
+            Run a likelihood evaluation on the Pipeline tab to explore the DataBlock here.
           </div>
-          <pre id="results-detail-body" class="results-detail-body"></pre>
+          <div id="results-tree" class="results-tree hidden"></div>
         </div>
+
+        <!-- Right panel: Plotly visualisation -->
+        <div class="results-right-panel">
+          <div class="results-plot-toolbar">
+            <span class="results-plot-info" id="results-plot-info">Select a 1D array in the tree to plot</span>
+            <div class="results-plot-btns">
+              <button id="results-log-x" class="results-log-btn" title="Toggle log scale on X axis">Log X</button>
+              <button id="results-log-y" class="results-log-btn" title="Toggle log scale on Y axis">Log Y</button>
+            </div>
+          </div>
+          <div id="results-plot-div" class="results-plot-div"></div>
+        </div>
+
       </div>
     </div>
     <div id="tab-sampling" class="tab-content" role="tabpanel">
@@ -94,6 +104,7 @@
     </div>
   </main>
 
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
   <script src="../static/js/pipeline.js"></script>
   <script src="../static/js/app.js"></script>
 </body>
