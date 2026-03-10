@@ -149,6 +149,14 @@ class PipelineCanvas {
     return PADH + SPW_MIN + SPO + this._maxSectionWidth() + PO;
   }
 
+  /**
+   * Left edge of a specific module's box when all modules are centre-aligned
+   * within the column (i.e. their horizontal centres share a single x).
+   */
+  _modLeft(module) {
+    return this._modX() + (this._maxModWidth() - this._moduleBoxWidth(module.name)) / 2;
+  }
+
   _modY(i) {
     const { PADV, MH, MS } = PipelineCanvas;
     return PADV + i * (MH + MS);
@@ -222,7 +230,7 @@ class PipelineCanvas {
       const j      = parseInt(jStr);
       const srcMod = this.modules[j];
       const mw     = this._moduleBoxWidth(srcMod.name);
-      const portX  = this._modX() + mw + PO;
+      const portX  = this._modLeft(srcMod) + mw + PO;
       const totalH = names.length * (PH + PG) - PG;
       const startY = this._modY(j) + (MH - totalH) / 2;
       result[j] = names.map((name, k) => ({
@@ -248,17 +256,17 @@ class PipelineCanvas {
   }
 
   _appendConnections() {
-    const mx  = this._modX();
+    // All modules are centre-aligned → the vertical connector always runs
+    // along the single shared centre x of the module column.
+    const cx  = this._modX() + this._maxModWidth() / 2;
     const { MH } = PipelineCanvas;
     for (let i = 0; i < this.modules.length - 1; i++) {
-      const cx1 = mx + this._moduleBoxWidth(this.modules[i].name)     / 2;
-      const cx2 = mx + this._moduleBoxWidth(this.modules[i + 1].name) / 2;
       const y1 = this._modY(i) + MH;
       const y2 = this._modY(i + 1) - 6;
       const el = this._el("line");
-      el.setAttribute("x1",          cx1);
+      el.setAttribute("x1",          cx);
       el.setAttribute("y1",          y1);
-      el.setAttribute("x2",          cx2);
+      el.setAttribute("x2",          cx);
       el.setAttribute("y2",          y2);
       el.setAttribute("stroke",       "#94a3b8");
       el.setAttribute("stroke-width", "2");
@@ -268,7 +276,7 @@ class PipelineCanvas {
   }
 
   _appendModule(module, index) {
-    const mx   = this._modX();
+    const mx   = this._modLeft(module);
     const my   = this._modY(index);
     const mw   = this._moduleBoxWidth(module.name);
     const { MH } = PipelineCanvas;
@@ -328,7 +336,7 @@ class PipelineCanvas {
 
   _appendSourceOutputBoxes(srcMod, srcIdx, positions) {
     const { MH, PH } = PipelineCanvas;
-    const mx = this._modX();
+    const mx = this._modLeft(srcMod);
     const mw = this._moduleBoxWidth(srcMod.name);
     const my = this._modY(srcIdx);
 
@@ -341,7 +349,7 @@ class PipelineCanvas {
   }
 
   _appendPorts(module, index) {
-    const mx = this._modX();
+    const mx = this._modLeft(module);
     const my = this._modY(index);
     const mw = this._moduleBoxWidth(module.name);
     const { MH, PH, PG, PO, SPH, SPG, SPO } = PipelineCanvas;
@@ -458,7 +466,7 @@ class PipelineCanvas {
     if (!inputs.length) return;
 
     const { MH, PH, PG, PO } = PipelineCanvas;
-    const mx = this._modX();
+    const mx = this._modLeft(sel);
     const my = this._modY(selIdx);
     const mw = this._moduleBoxWidth(sel.name);
 

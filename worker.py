@@ -247,7 +247,14 @@ class Backend:
                 "Pipeline not prepared. Click 'Prepare Pipeline' first."
             )
 
-        cap   = _FdCapture([1, 2])
+        # Use /dev/null redirection instead of a pipe-based capture.
+        # Cosmosis (and its C extensions) may spawn child processes that inherit
+        # the pipe write end, preventing EOF from being seen in the drain thread
+        # and causing an indefinite hang.  Since we never use the captured text
+        # on the success path, redirecting to /dev/null is simpler and avoids
+        # all blocking/buffering issues while still preventing cosmosis output
+        # from leaking into the IPC stdout channel.
+        redir = _FdDevNull([1, 2])
         error = None
         try:
             v             = self._pipeline.start_vector()
@@ -255,13 +262,10 @@ class Backend:
         except Exception as exc:
             error = exc
         finally:
-            captured = cap.finish()
+            redir.finish()
 
         if error is not None:
-            raise RuntimeError(
-                f"Likelihood run failed: {error}"
-                + (f"\n\n--- Captured output ---\n{captured}" if captured else "")
-            )
+            raise RuntimeError(f"Likelihood run failed: {error}")
 
         block      = getattr(self._results, "block", None)
         per_module = _extract_actual_module_io(block, self._pipeline_modules)
@@ -434,6 +438,7 @@ class _FdCapture:
             os.dup2(w, fd)
         os.close(w)  # Only the dup'd fds keep the write end alive now.
 
+        self._r = r   # saved so finish() can force-close if needed
         self._chunks: list[bytes] = []
         self._t = threading.Thread(target=self._drain, args=(r,), daemon=True)
         self._t.start()
@@ -468,26 +473,70 @@ class _FdCapture:
 
         # Restore originals.  Each os.dup2 closes the redirected fd's handle
         # to the write end of the pipe; the last one causes EOF in the drain
-        # thread.
+        # thread — unless a child process or C-level thread has inherited a
+        # copy of the write end.
         for fd in self._fds:
             os.dup2(self._saved[fd], fd)
             os.close(self._saved[fd])
 
-        self._t.join(timeout=10)
-        if self._t.is_alive():
-            # The drain thread is still running after the timeout.  This is
-            # unexpected but non-fatal: log a warning and continue with
-            # whatever data has been collected so far.
-            print(
-                "[worker] _FdCapture: drain thread did not finish within 10 s"
-                " — output may be incomplete.",
-                file=sys.stderr,
-            )
+        # Give the drain thread a short time to finish naturally.
+        self._t.join(timeout=5)
 
-        # Safe to read: _t.join() ensures the thread has finished (or we've
-        # already warned that it's still alive, in which case the GIL protects
-        # the list read against concurrent appends).
+        if self._t.is_alive():
+            # Some fd outside our control is still holding the pipe write end
+            # open (e.g. a C thread or child process spawned during capture).
+            # Force-stop the drain thread by closing the read end of the pipe;
+            # os.read() in the drain thread will raise OSError → break.
+            try:
+                os.close(self._r)
+            except OSError:
+                pass
+            self._t.join(timeout=3)
+            if self._t.is_alive():
+                print(
+                    "[worker] _FdCapture: drain thread did not stop after force-close"
+                    " — output may be incomplete.",
+                    file=sys.stderr,
+                )
+
+        # Safe to read: drain thread has exited (or been signalled to exit).
         return b"".join(self._chunks).decode("utf-8", errors="replace")
+
+
+class _FdDevNull:
+    """Temporarily redirect file descriptors to /dev/null.
+
+    Writes are instant and never block, so there is no risk of the calling
+    code deadlocking due to a full pipe buffer.  Use this when the output
+    produced during an operation is not needed.
+
+    Usage::
+
+        null = _FdDevNull([1, 2])
+        try:
+            do_something_that_produces_output()
+        finally:
+            null.finish()   # restores original fds; returns "" for API compat
+    """
+
+    def __init__(self, fds):
+        self._fds = list(fds)
+        _ipc_stdout.flush()
+        try:
+            sys.stderr.flush()
+        except Exception:
+            pass
+        self._saved = {fd: os.dup(fd) for fd in self._fds}
+        null_fd = os.open(os.devnull, os.O_WRONLY)
+        for fd in self._fds:
+            os.dup2(null_fd, fd)
+        os.close(null_fd)
+
+    def finish(self) -> str:
+        for fd in self._fds:
+            os.dup2(self._saved[fd], fd)
+            os.close(self._saved[fd])
+        return ""
 
 
 def _serialize_block(block):
