@@ -515,7 +515,8 @@ def _serialize_block(block):
     result = []
     for sec in section_names:
         try:
-            keys = list(block.keys(sec))
+            # block.keys(section) returns (section, name) pairs; extract just names.
+            keys = [name for _s, name in block.keys(sec)]
         except Exception:
             keys = []
 
