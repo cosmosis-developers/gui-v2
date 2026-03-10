@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CosmoSIS GUI</title>
+  <link rel="stylesheet" href="../static/css/style.css" />
+</head>
+<body>
+  <header>
+    <span class="app-title">CosmoSIS</span>
+    <nav class="tab-bar" role="tablist">
+      <button class="tab-btn active" data-tab="pipeline" role="tab" aria-selected="true">Pipeline</button>
+      <button class="tab-btn" data-tab="results"  role="tab" aria-selected="false">Results</button>
+      <button class="tab-btn" data-tab="sampling" role="tab" aria-selected="false">Sampling</button>
+      <button class="tab-btn" data-tab="campaign" role="tab" aria-selected="false">Campaign</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ── Pipeline tab ─────────────────────────────────────────── -->
+    <div id="tab-pipeline" class="tab-content active" role="tabpanel">
+      <div class="pipeline-layout">
+
+        <!-- Left sidebar: pipeline actions + module library -->
+        <aside class="left-sidebar">
+          <!-- Pipeline actions: prepare + run (above module library) -->
+          <div class="pipeline-actions">
+            <div class="pipeline-actions-header">Pipeline</div>
+            <button id="open-pipeline-btn" class="open-pipeline-btn" title="Load a pipeline from a CosmoSIS .ini file">
+              &#128196; Open Pipeline
+            </button>
+            <button id="prepare-pipeline-btn" class="action-btn action-btn-primary" disabled
+              title="Set verbosity=noisy and build a LikelihoodPipeline from the loaded .ini file">
+              &#9881; Prepare Pipeline
+            </button>
+            <button id="run-likelihood-btn" class="action-btn action-btn-secondary" disabled
+              title="Run one likelihood evaluation using the prepared pipeline">
+              &#9654; Run Likelihood
+            </button>
+            <div id="pipeline-status" class="pipeline-status hidden">
+              <span class="pipeline-status-spinner hidden"></span>
+              <span id="pipeline-status-text"></span>
+            </div>
+          </div>
+
+          <!-- Module library -->
+          <div class="sidebar-header">
+            Module Library
+            <button id="open-library-btn" class="open-library-btn" title="Load modules from a local CosmoSIS standard library directory">
+              &#128194; Open Library
+            </button>
+          </div>
+          <div id="scan-status" class="scan-status hidden"></div>
+          <div id="module-list" class="module-list"></div>
+        </aside>
+
+        <!-- Main pipeline canvas -->
+        <div id="pipeline-canvas-container" class="pipeline-canvas-container"></div>
+
+        <!-- Right sidebar: module details (hidden until a module is clicked) -->
+        <aside id="right-sidebar" class="right-sidebar hidden">
+          <div class="sidebar-title-bar">
+            <h2 id="details-title">Module Details</h2>
+            <button id="close-details" class="sidebar-close" title="Close">&#x2715;</button>
+          </div>
+          <div id="details-content" class="sidebar-body"></div>
+        </aside>
+
+      </div>
+    </div>
+
+    <!-- ── Results tab ─────────────────────────────────────────── -->
+    <div id="tab-results" class="tab-content" role="tabpanel">
+      <div class="results-layout">
+
+        <!-- Left panel: DataBlock section tree -->
+        <div class="results-left-panel">
+          <div id="results-placeholder" class="results-placeholder">
+            Run a likelihood evaluation on the Pipeline tab to explore the DataBlock here.
+          </div>
+          <div id="results-tree" class="results-tree hidden"></div>
+        </div>
+
+        <!-- Right panel: Plotly visualisation -->
+        <div class="results-right-panel">
+          <div class="results-plot-toolbar">
+            <span class="results-plot-info" id="results-plot-info">Select a 1D array in the tree to plot</span>
+            <div class="results-plot-btns">
+              <button id="results-log-x" class="results-log-btn" title="Toggle log scale on X axis">Log X</button>
+              <button id="results-log-y" class="results-log-btn" title="Toggle log scale on Y axis">Log Y</button>
+            </div>
+          </div>
+          <div id="results-plot-div" class="results-plot-div"></div>
+        </div>
+
+      </div>
+    </div>
+    <div id="tab-sampling" class="tab-content" role="tabpanel">
+      <div class="tab-placeholder">Sampling — coming soon</div>
+    </div>
+    <div id="tab-campaign" class="tab-content" role="tabpanel">
+      <div class="tab-placeholder">Campaign — coming soon</div>
+    </div>
+  </main>
+
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+  <script src="../static/js/pipeline.js"></script>
+  <script src="../static/js/app.js"></script>
+</body>
+</html>
