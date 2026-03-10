@@ -283,7 +283,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       header.addEventListener("click", () => {
         const open = header.classList.toggle("expanded");
-        body.style.display = open ? "" : "none";
+        body.style.display = open ? "flex" : "none";
       });
 
       (sec.values || []).forEach(val => {
