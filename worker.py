@@ -493,22 +493,24 @@ def _normalize_dtype(value):
     """Convert a DataBlock data_type (possibly a Python type object) to a display string."""
     if value is None:
         return ""
-    if isinstance(value, int):
+    if isinstance(value, (int, np.integer)):
         return "int"
-    elif isinstance(value, float):
+    elif isinstance(value, (float, np.floating)):
         return "real"
     elif isinstance(value, str):
         return "str"
     elif isinstance(value, bool):
         return "bool"
-    elif isinstance(value, complex):
+    elif isinstance(value, (complex, np.complexfloating)):
         return "complex"
     elif isinstance(value, np.ndarray):
         dt = value.dtype
         ndim = f"{value.ndim}D"
         if dt == 'int':
             return f"int {ndim}"
-        elif dt == 'real':
+        elif dt in [np.int32, np.int64, np.int128]:
+            return f"int {ndim}"
+        elif dt == 'float':
             return f"real {ndim}"
         elif dt == 'complex':
             return f"complex {ndim}"
@@ -516,9 +518,13 @@ def _normalize_dtype(value):
             return f"bool {ndim}"
         elif dt == 'str':
             return f"str {ndim}"
+        elif dt.kind == 'U':
+            return f"str {ndim}"
         else:
+            sys.stderr.write(f"??? Unrecognized array dtype: {dt}\n")
             return f"???? {ndim}"
     else:
+        sys.stderr.write(f"??? Unrecognized array dtype: {value}\n")
         return "????"
 
 
